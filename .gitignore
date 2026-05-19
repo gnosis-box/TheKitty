@@ -1,0 +1,18 @@
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+.vercel
+.turbo
+bun.lockb
+coverage
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Foundry
+contracts/out
+contracts/cache
+contracts/broadcast

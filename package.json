@@ -1,0 +1,12 @@
+{
+  "name": "potcommun",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "bun --filter @potcommun/web dev",
+    "build": "bun --filter @potcommun/web build",
+    "preview": "bun --filter @potcommun/web preview",
+    "typecheck": "bun --filter @potcommun/web typecheck",
+    "lint": "bun --filter @potcommun/web lint"
+  }
+}
