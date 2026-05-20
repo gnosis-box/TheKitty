@@ -13,5 +13,15 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Allow dev-server access through HTTPS tunnels (cloudflared, ngrok,
+    // localtunnel) so the Circles playground iframe can load the app while
+    // we iterate locally.
+    allowedHosts: [
+      '.trycloudflare.com',
+      '.ngrok-free.app',
+      '.ngrok.app',
+      '.ngrok.io',
+      '.loca.lt',
+    ],
   },
 });
