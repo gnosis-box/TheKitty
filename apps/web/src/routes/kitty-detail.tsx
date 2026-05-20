@@ -1,142 +1,214 @@
-import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, PiggyBank, Send, Sparkles, RefreshCw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ProposalCard } from '@/components/pot/ProposalCard';
 import { useWallet } from '@/hooks/use-wallet';
-import { loadKitties } from '@/lib/storage';
-import { shortAddress } from '@/lib/utils';
-import type { Address, KittyRef } from '@/types/kitty';
+import { useKitty } from '@/hooks/use-kitty';
+import { formatCrc, shortAddress } from '@/lib/utils';
+import type { Address } from '@/types/kitty';
 
 export default function KittyDetailRoute() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { address } = useWallet();
-  const [kitty, setKitty] = useState<KittyRef | null>(null);
 
-  useEffect(() => {
-    if (!address || !id) return;
-    const match = loadKitties(address).find(
-      (k) => k.governance.toLowerCase() === id.toLowerCase(),
-    );
-    setKitty(match ?? null);
-  }, [address, id]);
+  const governance = (id ?? '') as Address;
+  const { state, loading, error, refresh } = useKitty(governance);
 
-  if (!address) {
+  if (!id) {
     return (
       <main className="mx-auto max-w-md px-5 py-12 text-center text-sm text-[var(--color-muted)]">
-        Connect via the Circles host to view a kitty.
-      </main>
-    );
-  }
-
-  if (!kitty) {
-    return (
-      <main className="mx-auto flex max-w-md flex-col gap-4 px-5 py-12">
-        <header className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="px-2"
-          >
-            <ArrowLeft className="size-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">Kitty not found</h1>
-        </header>
-        <p className="text-sm text-[var(--color-muted)]">
-          We have no local record of <code>{shortAddress(id as Address)}</code>. If you joined
-          someone else's kitty, ask the creator to share the link directly.
-        </p>
+        Missing kitty id.
       </main>
     );
   }
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
-      <header className="flex items-center gap-2">
+      <header className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/')}
+            aria-label="Back"
+            className="px-2"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              Kitty
+            </p>
+            <h1 className="font-mono text-base">{shortAddress(governance)}</h1>
+          </div>
+        </div>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate('/')}
-          aria-label="Back"
+          onClick={() => void refresh()}
+          aria-label="Refresh"
           className="px-2"
+          disabled={loading}
         >
-          <ArrowLeft className="size-4" />
+          <RefreshCw className={loading ? 'size-4 animate-spin' : 'size-4'} />
         </Button>
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-            {kitty.symbol}
-          </p>
-          <h1 className="text-2xl font-semibold">{kitty.name}</h1>
-        </div>
       </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Overview</CardTitle>
-          <CardDescription>Coming next phase — balance, proposals, history.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <Stat label="Members" value={String(kitty.members.length)} />
-            <Stat label="Quorum" value={`${kitty.quorumPercent}%`} />
-            <Stat
-              label="Small cap"
-              value={`${formatRawCrc(kitty.smallTxThreshold)} CRC`}
-            />
-            <Stat
-              label="Voting"
-              value={`${Math.round(kitty.votingPeriod / 3600)}h`}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {error && (
+        <Card className="border-rose-500/40 bg-rose-500/5">
+          <CardContent>
+            <p className="text-sm text-rose-200">{error.message}</p>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Addresses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AddressRow label="Governance" value={kitty.governance} />
-          <AddressRow label="Group avatar" value={kitty.groupAvatar} />
-        </CardContent>
-      </Card>
+      {state && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <PiggyBank className="size-4" /> Pool
+              </CardTitle>
+              <CardDescription>
+                Pot tokens custodied by the governance contract.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <Stat label="Current pool" value={`${formatCrc(state.potBalance)} CRC`} />
+                <Stat label="Total deposited" value={`${formatCrc(state.totalDeposited)} CRC`} />
+                <Stat label="Members" value={String(state.members.length)} />
+                <Stat label="Quorum" value={`${state.quorumPercent}%`} />
+                <Stat label="Small cap" value={`${formatCrc(state.smallTxThreshold)} CRC`} />
+                <Stat
+                  label="Voting"
+                  value={`${Math.round(state.votingPeriod / 3600)}h`}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {kitty.members.map((m) => (
-            <div
-              key={m}
-              className="flex items-center justify-between rounded-lg bg-[var(--color-surface-hi)] px-3 py-2 font-mono text-xs"
+          <div className="grid grid-cols-2 gap-3">
+            <Link
+              to={`/kitty/${governance}/deposit`}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:brightness-110"
             >
-              <span>{shortAddress(m)}</span>
-              {address.toLowerCase() === m.toLowerCase() && <Badge tone="accent">you</Badge>}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+              <PiggyBank className="size-4" /> Deposit
+            </Link>
+            <Link
+              to={`/kitty/${governance}/propose`}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-surface-hi)] text-[var(--color-text)] hover:bg-[var(--color-border)]"
+            >
+              <Send className="size-4" /> Spend
+            </Link>
+          </div>
 
-      <Card>
-        <CardContent>
-          <p className="text-sm text-[var(--color-muted)]">
-            Deposits, proposals and spending land in Phase 3. For now, the kitty is created and
-            members are trusted on-chain.
-          </p>
-          <Link
-            to="/"
-            className="inline-flex h-9 items-center justify-center self-start rounded-xl border border-[var(--color-border)] px-3 text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hi)]"
-          >
-            Back to all kitties
-          </Link>
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="size-4" /> Saved from decay
+              </CardTitle>
+              <CardDescription>
+                Personal CRC loses ~7%/yr when it sits still. This is what the kitty kept alive
+                by keeping the money in motion.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="font-mono text-2xl">
+                +{formatCrc(estimateDecaySaved(state.totalDeposited))} CRC
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Members & deposits</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {state.members.map((m) => (
+                <div
+                  key={m}
+                  className="flex items-center justify-between rounded-lg bg-[var(--color-surface-hi)] px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs">{shortAddress(m)}</span>
+                    {address?.toLowerCase() === m.toLowerCase() && (
+                      <Badge tone="accent">you</Badge>
+                    )}
+                  </div>
+                  <span className="font-mono text-xs text-[var(--color-muted)]">
+                    {formatCrc(state.deposits[m.toLowerCase()] ?? 0n)} CRC
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <section className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted)]">
+                Proposals ({state.proposals.length})
+              </h2>
+              <Link
+                to={`/kitty/${governance}/propose`}
+                className="text-xs text-[color-mix(in_oklab,var(--color-accent),white_25%)] hover:underline"
+              >
+                + new
+              </Link>
+            </div>
+            {state.proposals.length === 0 ? (
+              <Card>
+                <CardContent>
+                  <p className="text-sm text-[var(--color-muted)]">
+                    No proposals yet. Time to plan the next group spend.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              [...state.proposals].reverse().map((p) => (
+                <ProposalCard
+                  key={p.id.toString()}
+                  governance={governance}
+                  proposal={p}
+                  memberCount={state.members.length}
+                  quorumPercent={state.quorumPercent}
+                  onChanged={refresh}
+                />
+              ))
+            )}
+          </section>
+
+          <Card>
+            <CardContent>
+              <p className="text-xs text-[var(--color-muted)]">
+                Group avatar:
+                <a
+                  href={`https://gnosisscan.io/address/${state.groupAvatar}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-1 inline-flex items-center gap-1 font-mono hover:text-[var(--color-text)]"
+                >
+                  {shortAddress(state.groupAvatar)} <ExternalLink className="size-3" />
+                </a>
+              </p>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {!state && !loading && !error && (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-[var(--color-muted)]">
+              No data — confirm this governance address is correct.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </main>
   );
 }
@@ -150,33 +222,11 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AddressRow({ label, value }: { label: string; value: Address }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg bg-[var(--color-surface-hi)] px-3 py-2">
-      <div>
-        <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">{label}</p>
-        <p className="font-mono text-xs">{shortAddress(value)}</p>
-      </div>
-      <a
-        href={`https://gnosisscan.io/address/${value}`}
-        target="_blank"
-        rel="noreferrer"
-        className="text-[var(--color-muted)] hover:text-[var(--color-text)]"
-        aria-label="Open in GnosisScan"
-      >
-        <ExternalLink className="size-3.5" />
-      </a>
-    </div>
-  );
-}
-
-function formatRawCrc(raw: string): string {
-  try {
-    const n = BigInt(raw);
-    const whole = n / 10n ** 18n;
-    const fraction = (n % 10n ** 18n) / 10n ** 14n; // 4 dp
-    return fraction === 0n ? whole.toString() : `${whole}.${String(fraction).padStart(4, '0')}`;
-  } catch {
-    return raw;
-  }
+/// Placeholder decay calculation. Circles' demurrage shrinks idle CRC by
+/// ~7%/yr. Real version (Phase 4 polish) compares the kitty's actual balance
+/// trajectory against the "everyone kept it in their own wallet" counterfactual.
+/// For now, return ~7%/yr prorated over a 30-day window — indicative only.
+function estimateDecaySaved(totalDeposited: bigint): bigint {
+  // (totalDeposited * 0.07 / 12) — one month at 7%/yr.
+  return (totalDeposited * 7n) / 1200n;
 }
