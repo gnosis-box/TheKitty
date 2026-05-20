@@ -1,63 +1,45 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Wallet, Signature, Send, ExternalLink } from 'lucide-react';
+import { Plus, Wallet, Signature, Send, ChevronDown, ChevronUp } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { KittyCard } from '@/components/pot/KittyCard';
 import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
+import { loadKitties } from '@/lib/storage';
 import { shortAddress } from '@/lib/utils';
+import type { KittyRef } from '@/types/kitty';
 
 export default function HomeRoute() {
-  const { address, isConnected, isMiniappHost, signMessage, sendTransactions } = useWallet();
-  const [busy, setBusy] = useState<null | 'sign' | 'tx'>(null);
+  const { address, isConnected, isMiniappHost, signMessage } = useWallet();
+  const [kitties, setKitties] = useState<KittyRef[]>([]);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [signing, setSigning] = useState(false);
+
+  useEffect(() => {
+    if (!address) {
+      setKitties([]);
+      return;
+    }
+    setKitties(loadKitties(address));
+  }, [address]);
 
   async function handleSign() {
     if (!isConnected) {
-      toast.error('Wallet not connected — load the mini-app in the playground.');
+      toast.error('Wallet not connected — load the mini-app in the Circles host.');
       return;
     }
-    setBusy('sign');
+    setSigning(true);
     try {
-      const { signature, verified } = await signMessage('Hello from PotCommun');
-      toast.success(
-        `Signature ${verified ? '✓' : '(unverified)'} — ${signature.slice(0, 18)}…`,
-      );
+      const { signature, verified } = await signMessage('Hello from The Kitty');
+      toast.success(`Signature ${verified ? '✓' : '(unverified)'} — ${signature.slice(0, 18)}…`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Signing failed');
     } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleTestTx() {
-    if (!isConnected || !address) {
-      toast.error('Wallet not connected.');
-      return;
-    }
-    setBusy('tx');
-    try {
-      // Phase 0 sanity check: noop calldata sent to the V2 Hub.
-      // Encoded by hand to avoid pulling viem into the smoke test;
-      // real Hub calls land in phase 2 with proper viem encoding.
-      const selector = '0x095ea7b3'; // placeholder selector — replaced in phase 2
-      const padded = address.replace(/^0x/, '').padStart(64, '0');
-      const expiry = 'f'.repeat(64);
-      const data = `${selector}${padded}${expiry}` as `0x${string}`;
-
-      const hashes = await sendTransactions([
-        {
-          to: CIRCLES_CONFIG.v2HubAddress,
-          data,
-          value: '0',
-        },
-      ]);
-      toast.success(`Tx sent — ${hashes[0]?.slice(0, 18) ?? 'ok'}…`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Tx failed');
-    } finally {
-      setBusy(null);
+      setSigning(false);
     }
   }
 
@@ -66,82 +48,104 @@ export default function HomeRoute() {
       <header className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-            PotCommun
+            The Kitty
           </p>
-          <h1 className="text-2xl font-semibold">Phase 0 — sanity check</h1>
+          <h1 className="text-2xl font-semibold">Your group pots</h1>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">Chip in. Cash out together.</p>
         </div>
-        <Badge tone={CIRCLES_CONFIG.env === 'sandbox' ? 'accent' : 'success'}>
-          {CIRCLES_CONFIG.env}
-        </Badge>
+        {isConnected ? (
+          <Badge tone="success" className="font-mono">
+            {shortAddress(address)}
+          </Badge>
+        ) : (
+          <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
+        )}
       </header>
 
+      <Link
+        to="/kitty/new"
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_8px_24px_-12px_rgba(124,92,255,0.7)] hover:brightness-110"
+      >
+        <Plus className="size-4" /> Create a kitty
+      </Link>
+
+      {!isConnected && (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-[var(--color-muted)]">
+              Open this mini-app inside the Circles playground to see your kitties. The host
+              wallet injects your Safe address via <code>onWalletChange</code>.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isConnected && kitties.length === 0 && (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-[var(--color-muted)]">
+              No kitties yet. Create one with two or more friends to start pooling CRC.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {kitties.length > 0 && (
+        <section className="flex flex-col gap-3">
+          {kitties.map((k) => (
+            <KittyCard key={k.governance} kitty={k} />
+          ))}
+        </section>
+      )}
+
+      {/* Dev / sanity-check panel — collapsed by default. */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="size-4" /> Wallet
+          <CardTitle>
+            <button
+              type="button"
+              onClick={() => setDebugOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-left text-base"
+            >
+              <span className="flex items-center gap-2">
+                <Wallet className="size-4" /> Host bridge debug
+              </span>
+              {debugOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+            </button>
           </CardTitle>
-          <CardDescription>
-            The Circles host injects the Safe address via{' '}
-            <code className="text-[var(--color-text)]">onWalletChange</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isConnected ? (
-            <Badge tone="success" className="self-start font-mono">
-              {shortAddress(address)}
-            </Badge>
-          ) : (
-            <Badge tone="neutral" className="self-start">
-              {isMiniappHost ? 'Waiting for host…' : 'Standalone — not connected'}
-            </Badge>
+          {debugOpen && (
+            <CardDescription>
+              Validate the iframe → SDK → Safe chain. Useful when debugging the playground.
+            </CardDescription>
           )}
-          <p className="text-xs text-[var(--color-muted)]">
-            iframe host detected: <strong>{String(isMiniappHost)}</strong>
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Host bridge tests</CardTitle>
-          <CardDescription>
-            Validate the <em>iframe → SDK → Safe</em> chain before moving to phase 1.
-          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={handleSign} disabled={!isConnected || busy === 'sign'}>
-            <Signature className="size-4" />
-            {busy === 'sign' ? 'Signing…' : 'Sign a message'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={handleTestTx}
-            disabled={!isConnected || busy === 'tx'}
-          >
-            <Send className="size-4" />
-            {busy === 'tx' ? 'Sending…' : 'Send a test tx'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Playground</CardTitle>
-          <CardDescription>
-            Load this app's Vercel preview URL inside the playground to test under real host
-            conditions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <a
-            href="https://circles.gnosis.io/playground"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-[color-mix(in_oklab,var(--color-accent),white_25%)] hover:underline"
-          >
-            Open the playground <ExternalLink className="size-3.5" />
-          </a>
-        </CardContent>
+        {debugOpen && (
+          <CardContent>
+            <p className="text-xs text-[var(--color-muted)]">
+              iframe host detected: <strong>{String(isMiniappHost)}</strong>
+              <br />
+              chain id: <strong>{CIRCLES_CONFIG.chainId}</strong>
+              <br />
+              factory:{' '}
+              {CIRCLES_CONFIG.kittyFactoryAddress ? (
+                <code>{shortAddress(CIRCLES_CONFIG.kittyFactoryAddress)}</code>
+              ) : (
+                <span className="text-rose-300">not configured</span>
+              )}
+            </p>
+            <Button onClick={handleSign} disabled={!isConnected || signing} variant="secondary">
+              <Signature className="size-4" />
+              {signing ? 'Signing…' : 'Sign test message'}
+            </Button>
+            <Link
+              to="/kitty/new"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-surface-hi)] px-4 text-sm text-[var(--color-text)] hover:bg-[var(--color-border)]"
+            >
+              <Send className="size-4" />
+              Try the create-kitty flow
+            </Link>
+          </CardContent>
+        )}
       </Card>
     </main>
   );

@@ -1,0 +1,25 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+cache_path = "cache"
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+verbosity = 2
+fuzz = { runs = 256 }
+
+[fmt]
+line_length = 100
+tab_width = 4
+quote_style = "double"
+int_types = "long"
+
+[rpc_endpoints]
+gnosis = "${GNOSIS_RPC}"
+
+[etherscan]
+gnosis = { key = "${GNOSISSCAN_API_KEY}", url = "https://api.gnosisscan.io/api" }

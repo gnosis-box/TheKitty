@@ -1,8 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_CIRCLES_ENV?: 'sandbox' | 'mainnet';
-  readonly VITE_POT_GOVERNANCE_FACTORY?: string;
+  readonly VITE_KITTY_FACTORY?: `0x${string}`;
 }
 
 interface ImportMeta {

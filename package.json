@@ -1,12 +1,12 @@
 {
-  "name": "potcommun",
+  "name": "kitty",
   "private": true,
   "workspaces": ["apps/*"],
   "scripts": {
-    "dev": "bun --filter @potcommun/web dev",
-    "build": "bun --filter @potcommun/web build",
-    "preview": "bun --filter @potcommun/web preview",
-    "typecheck": "bun --filter @potcommun/web typecheck",
-    "lint": "bun --filter @potcommun/web lint"
+    "dev": "bun --filter @kitty/web dev",
+    "build": "bun --filter @kitty/web build",
+    "preview": "bun --filter @kitty/web preview",
+    "typecheck": "bun --filter @kitty/web typecheck",
+    "lint": "bun --filter @kitty/web lint"
   }
 }
