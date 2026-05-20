@@ -85,8 +85,8 @@ contract KittyFactoryTest is Test {
         m[2] = charlie;
     }
 
-    function test_createKitty_endToEnd() public {
-        KittyFactory.GroupArgs memory g = KittyFactory.GroupArgs({
+    function _groupArgs() internal view returns (KittyFactory.GroupArgs memory) {
+        return KittyFactory.GroupArgs({
             service: address(0),
             feeCollection: creator,
             initialConditions: new address[](0),
@@ -94,18 +94,35 @@ contract KittyFactoryTest is Test {
             symbol: "KTY",
             metadataDigest: bytes32(0)
         });
+    }
 
-        address[] memory members = _members();
-        KittyFactory.KittyArgs memory k = KittyFactory.KittyArgs({
-            members: members,
+    function _kittyArgs() internal view returns (KittyFactory.KittyArgs memory) {
+        return KittyFactory.KittyArgs({
+            members: _members(),
             quorumPercent: 51,
             smallTxThreshold: 5e18,
             votingPeriod: 1 days,
             trustExpiry: type(uint96).max
         });
+    }
 
+    // ── constructor ─────────────────────────────────────────────────────────
+
+    function test_constructor_rejectsZeroFactory() public {
+        vm.expectRevert(KittyFactory.ZeroAddress.selector);
+        new KittyFactory(IBaseGroupFactory(address(0)), address(hub));
+    }
+
+    function test_constructor_rejectsZeroHub() public {
+        vm.expectRevert(KittyFactory.ZeroAddress.selector);
+        new KittyFactory(IBaseGroupFactory(address(baseFactory)), address(0));
+    }
+
+    // ── createKitty ────────────────────────────────────────────────────────
+
+    function test_createKitty_endToEnd() public {
         vm.prank(creator);
-        (address baseGroup, address governance) = factory.createKitty(g, k);
+        (address baseGroup, address governance) = factory.createKitty(_groupArgs(), _kittyArgs());
 
         // BaseGroup ownership ends up with the creator (we transferred it).
         assertEq(MockBaseGroup(baseGroup).owner(), creator);
@@ -127,30 +144,11 @@ contract KittyFactoryTest is Test {
         assertTrue(gov.isMember(charlie));
     }
 
-    function test_createKitty_emitsEvent() public {
-        KittyFactory.GroupArgs memory g = KittyFactory.GroupArgs({
-            service: address(0),
-            feeCollection: creator,
-            initialConditions: new address[](0),
-            name: "My Kitty",
-            symbol: "KTY",
-            metadataDigest: bytes32(0)
-        });
-
-        address[] memory members = _members();
-        KittyFactory.KittyArgs memory k = KittyFactory.KittyArgs({
-            members: members,
-            quorumPercent: 51,
-            smallTxThreshold: 5e18,
-            votingPeriod: 1 days,
-            trustExpiry: type(uint96).max
-        });
-
+    function test_createKitty_emitsEventWithCreatorIndexed() public {
         vm.prank(creator);
         vm.recordLogs();
-        factory.createKitty(g, k);
+        factory.createKitty(_groupArgs(), _kittyArgs());
 
-        // Last log is the KittyCreated event from the factory.
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bool found;
         bytes32 sig = keccak256(
@@ -163,6 +161,24 @@ contract KittyFactoryTest is Test {
                 break;
             }
         }
-        assertTrue(found, "KittyCreated not emitted");
+        assertTrue(found, "KittyCreated not emitted with new signature");
+    }
+
+    function test_createKitty_rejectsExpiredTrust() public {
+        vm.warp(1_000_000);
+        KittyFactory.KittyArgs memory k = _kittyArgs();
+        k.trustExpiry = uint96(block.timestamp); // not strictly in the future
+        vm.prank(creator);
+        vm.expectRevert(KittyFactory.TrustExpiryInPast.selector);
+        factory.createKitty(_groupArgs(), k);
+    }
+
+    function test_createKitty_rejectsPastTrust() public {
+        vm.warp(1_000_000);
+        KittyFactory.KittyArgs memory k = _kittyArgs();
+        k.trustExpiry = uint96(block.timestamp - 1);
+        vm.prank(creator);
+        vm.expectRevert(KittyFactory.TrustExpiryInPast.selector);
+        factory.createKitty(_groupArgs(), k);
     }
 }

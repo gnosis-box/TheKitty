@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity 0.8.24;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {KittyGovernance} from "./KittyGovernance.sol";
 
 /// @notice Minimal slice of the Circles V2 `BaseGroupFactory` we need.
@@ -35,7 +36,7 @@ interface IBaseGroup {
 ///         ownership of the BaseGroup so we can call `trustBatchWithConditions`,
 ///         then `setOwner(creator)` at the end so the user retains group
 ///         control after the call returns.
-contract KittyFactory {
+contract KittyFactory is ReentrancyGuard {
     IBaseGroupFactory public immutable baseGroupFactory;
     address public immutable hub;
 
@@ -49,7 +50,18 @@ contract KittyFactory {
         uint32 votingPeriod
     );
 
+    /// @notice Auxiliary handles returned by the underlying BaseGroupFactory.
+    ///         Emitted from a separate event so the main one stays under the
+    ///         stack-depth limit without needing via-IR.
+    event KittyHandles(address indexed baseGroup, address mintHandler, address treasury);
+
+    error ZeroAddress();
+    error TrustExpiryInPast();
+
     constructor(IBaseGroupFactory _baseGroupFactory, address _hub) {
+        if (address(_baseGroupFactory) == address(0) || _hub == address(0)) {
+            revert ZeroAddress();
+        }
         baseGroupFactory = _baseGroupFactory;
         hub = _hub;
     }
@@ -76,11 +88,19 @@ contract KittyFactory {
     /// @return governance   Address of the deployed KittyGovernance contract.
     function createKitty(GroupArgs calldata g, KittyArgs calldata k)
         external
+        nonReentrant
         returns (address baseGroup, address governance)
     {
+        // slither-disable-next-line timestamp
+        if (k.trustExpiry <= block.timestamp) revert TrustExpiryInPast();
+
         // 1. The factory deploys the BaseGroup with US as the temporary owner,
-        //    so we can trust the members on the user's behalf.
-        (baseGroup,,) = baseGroupFactory.createBaseGroup(
+        //    so we can trust the members on the user's behalf. We forward the
+        //    handler / treasury into the event so consumers can index them
+        //    without re-querying the factory.
+        address mintHandler;
+        address treasury;
+        (baseGroup, mintHandler, treasury) = baseGroupFactory.createBaseGroup(
             address(this),
             g.service,
             g.feeCollection,
@@ -107,10 +127,7 @@ contract KittyFactory {
             )
         );
 
-        // 4. Hand BaseGroup ownership to the original creator so they can
-        //    keep managing trust / metadata after the call.
-        IBaseGroup(baseGroup).setOwner(msg.sender);
-
+        emit KittyHandles(baseGroup, mintHandler, treasury);
         emit KittyCreated(
             msg.sender,
             baseGroup,
@@ -120,5 +137,10 @@ contract KittyFactory {
             k.smallTxThreshold,
             k.votingPeriod
         );
+
+        // 4. Hand BaseGroup ownership to the original creator so they can
+        //    keep managing trust / metadata after the call. Done last so the
+        //    KittyCreated event sees the same effective owner.
+        IBaseGroup(baseGroup).setOwner(msg.sender);
     }
 }

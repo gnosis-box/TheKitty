@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity 0.8.24;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+
 /// @notice Minimal Circles V2 Hub interface used by the kitty.
 interface IHub {
     function safeTransferFrom(
@@ -11,7 +14,7 @@ interface IHub {
         bytes calldata data
     ) external;
 
-    function toTokenId(address avatar) external pure returns (uint256);
+    function toTokenId(address avatar) external view returns (uint256);
 }
 
 /// @notice Minimal ERC-1155 receiver interface (subset of OpenZeppelin's).
@@ -51,7 +54,16 @@ interface IERC165 {
 ///         this contract in a single Safe execution. On receipt the contract
 ///         credits `deposited[from] += value`. The pot's token id is locked in at
 ///         construction time from the linked group avatar.
-contract KittyGovernance is IERC1155Receiver, IERC165 {
+///
+///         Quorum semantics: `approvals * 100 >= members * quorumPercent`.
+///         The threshold rounds UP to the next whole member (e.g. 3 members @ 51%
+///         needs 2 approvals = 67%). Document this in UI copy.
+contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
+    using SafeCast for uint256;
+
+    /// @notice Upper bound on `memo` length to keep storage costs bounded.
+    uint256 public constant MAX_MEMO_LEN = 256;
+
     address public immutable hub;
     address public immutable groupAvatar;
     uint256 public immutable potTokenId;
@@ -85,13 +97,19 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
     event Proposed(
         uint256 indexed id,
         address indexed proposer,
-        address recipient,
+        address indexed recipient,
         uint128 amount,
+        uint32 deadline,
         string memo
     );
     event Approved(uint256 indexed id, address indexed voter, uint32 approvals);
-    event Executed(uint256 indexed id, address recipient, uint128 amount);
-    event SmallSpend(address indexed by, address recipient, uint128 amount, string memo);
+    event Executed(uint256 indexed id, address indexed recipient, uint128 amount);
+    event SmallSpend(
+        address indexed by,
+        address indexed recipient,
+        uint128 amount,
+        string memo
+    );
 
     error NotMember();
     error BadQuorum();
@@ -105,6 +123,10 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
     error UnknownProposal();
     error OnlyHub();
     error WrongTokenId();
+    error ZeroAddress();
+    error BadVotingPeriod();
+    error DirectMintNotAllowed();
+    error MemoTooLong();
 
     modifier onlyMember() {
         if (!isMember[msg.sender]) revert NotMember();
@@ -119,7 +141,9 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         uint128 _smallTxThreshold,
         uint32 _votingPeriod
     ) {
+        if (_hub == address(0) || _groupAvatar == address(0)) revert ZeroAddress();
         if (_quorumPercent == 0 || _quorumPercent > 100) revert BadQuorum();
+        if (_votingPeriod == 0) revert BadVotingPeriod();
         if (members_.length < 2) revert NotEnoughMembers();
 
         hub = _hub;
@@ -131,6 +155,7 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
 
         for (uint256 i = 0; i < members_.length; i++) {
             address m = members_[i];
+            if (m == address(0)) revert ZeroAddress();
             if (isMember[m]) revert DuplicateMember();
             isMember[m] = true;
             _members.push(m);
@@ -149,8 +174,9 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         bytes calldata /* data */
     ) external override returns (bytes4) {
         if (msg.sender != hub) revert OnlyHub();
+        if (from == address(0)) revert DirectMintNotAllowed();
         if (id != potTokenId) revert WrongTokenId();
-        _credit(from, uint128(value));
+        _credit(from, value.toUint128());
         return IERC1155Receiver.onERC1155Received.selector;
     }
 
@@ -162,11 +188,17 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         bytes calldata /* data */
     ) external override returns (bytes4) {
         if (msg.sender != hub) revert OnlyHub();
+        if (from == address(0)) revert DirectMintNotAllowed();
         uint256 len = ids.length;
+        uint128 sum = 0;
         for (uint256 i = 0; i < len; i++) {
             if (ids[i] != potTokenId) revert WrongTokenId();
-            _credit(from, uint128(values[i]));
+            uint128 v = values[i].toUint128();
+            deposited[from] += v;
+            sum += v;
         }
+        totalDeposited += sum;
+        emit Deposit(from, sum, totalDeposited);
         return IERC1155Receiver.onERC1155BatchReceived.selector;
     }
 
@@ -189,10 +221,12 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         address recipient,
         uint128 amount,
         string calldata memo
-    ) external onlyMember {
+    ) external onlyMember nonReentrant {
+        if (recipient == address(0)) revert ZeroAddress();
         if (amount > smallTxThreshold) revert AmountExceedsThreshold();
-        _transferOut(recipient, amount);
+        if (bytes(memo).length > MAX_MEMO_LEN) revert MemoTooLong();
         emit SmallSpend(msg.sender, recipient, amount, memo);
+        _transferOut(recipient, amount);
     }
 
     /// @notice Open a proposal for a larger spend. The proposer's vote is counted.
@@ -201,20 +235,23 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         uint128 amount,
         string calldata memo
     ) external onlyMember returns (uint256 id) {
+        if (recipient == address(0)) revert ZeroAddress();
+        if (bytes(memo).length > MAX_MEMO_LEN) revert MemoTooLong();
+        uint32 deadline = uint32(block.timestamp) + votingPeriod;
         id = _proposals.length;
         _proposals.push(
             Proposal({
                 proposer: msg.sender,
                 recipient: recipient,
                 amount: amount,
-                deadline: uint32(block.timestamp) + votingPeriod,
+                deadline: deadline,
                 approvals: 1,
                 executed: false,
                 memo: memo
             })
         );
         hasVoted[id][msg.sender] = true;
-        emit Proposed(id, msg.sender, recipient, amount, memo);
+        emit Proposed(id, msg.sender, recipient, amount, deadline, memo);
         emit Approved(id, msg.sender, 1);
     }
 
@@ -226,6 +263,7 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
         if (id >= _proposals.length) revert UnknownProposal();
         Proposal storage p = _proposals[id];
         if (p.executed) revert AlreadyExecuted();
+        // slither-disable-next-line timestamp
         if (block.timestamp > p.deadline) revert VotingClosed();
         if (hasVoted[id][msg.sender]) revert AlreadyVoted();
 
@@ -235,14 +273,14 @@ contract KittyGovernance is IERC1155Receiver, IERC165 {
     }
 
     /// @notice Settle a proposal once it has reached quorum.
-    function execute(uint256 id) external onlyMember {
+    function execute(uint256 id) external onlyMember nonReentrant {
         if (id >= _proposals.length) revert UnknownProposal();
         Proposal storage p = _proposals[id];
         if (p.executed) revert AlreadyExecuted();
         if (!_quorumReached(p.approvals)) revert QuorumNotReached();
         p.executed = true;
-        _transferOut(p.recipient, p.amount);
         emit Executed(id, p.recipient, p.amount);
+        _transferOut(p.recipient, p.amount);
     }
 
     /// @dev Transfers pot tokens out of THIS contract (the custodian), not the group.
