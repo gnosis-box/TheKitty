@@ -64,4 +64,20 @@ export const kittyFactoryAbi = [
       { indexed: false, name: 'votingPeriod', type: 'uint32' },
     ],
   },
+  {
+    type: 'event',
+    name: 'KittyHandles',
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'baseGroup', type: 'address' },
+      { indexed: false, name: 'mintHandler', type: 'address' },
+      { indexed: false, name: 'treasury', type: 'address' },
+    ],
+  },
+
+  // ── errors ─────────────────────────────────────────────────────────────────
+  { type: 'error', name: 'ZeroAddress', inputs: [] },
+  { type: 'error', name: 'TrustExpiryInPast', inputs: [] },
+  // Inherited from OpenZeppelin ReentrancyGuard.
+  { type: 'error', name: 'ReentrancyGuardReentrantCall', inputs: [] },
 ] as const;

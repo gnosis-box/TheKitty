@@ -87,6 +87,27 @@ export const kittyGovernanceAbi = [
   { type: 'function', name: 'proposalCount', inputs: [], outputs: [{ type: 'uint256' }], stateMutability: 'view' },
   {
     type: 'function',
+    name: 'deposited',
+    inputs: [{ type: 'address' }],
+    outputs: [{ type: 'uint128' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'totalDeposited',
+    inputs: [],
+    outputs: [{ type: 'uint128' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'supportsInterface',
+    inputs: [{ type: 'bytes4' }],
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     name: 'getProposal',
     inputs: [{ name: 'id', type: 'uint256' }],
     outputs: [
@@ -122,8 +143,9 @@ export const kittyGovernanceAbi = [
     inputs: [
       { indexed: true, name: 'id', type: 'uint256' },
       { indexed: true, name: 'proposer', type: 'address' },
-      { indexed: false, name: 'recipient', type: 'address' },
+      { indexed: true, name: 'recipient', type: 'address' },
       { indexed: false, name: 'amount', type: 'uint128' },
+      { indexed: false, name: 'deadline', type: 'uint32' },
       { indexed: false, name: 'memo', type: 'string' },
     ],
     anonymous: false,
@@ -143,7 +165,7 @@ export const kittyGovernanceAbi = [
     name: 'Executed',
     inputs: [
       { indexed: true, name: 'id', type: 'uint256' },
-      { indexed: false, name: 'recipient', type: 'address' },
+      { indexed: true, name: 'recipient', type: 'address' },
       { indexed: false, name: 'amount', type: 'uint128' },
     ],
     anonymous: false,
@@ -153,9 +175,19 @@ export const kittyGovernanceAbi = [
     name: 'SmallSpend',
     inputs: [
       { indexed: true, name: 'by', type: 'address' },
-      { indexed: false, name: 'recipient', type: 'address' },
+      { indexed: true, name: 'recipient', type: 'address' },
       { indexed: false, name: 'amount', type: 'uint128' },
       { indexed: false, name: 'memo', type: 'string' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'Deposit',
+    inputs: [
+      { indexed: true, name: 'from', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint128' },
+      { indexed: false, name: 'newTotal', type: 'uint128' },
     ],
     anonymous: false,
   },
@@ -163,6 +195,7 @@ export const kittyGovernanceAbi = [
   // ── errors ─────────────────────────────────────────────────────────────────
   { type: 'error', name: 'NotMember', inputs: [] },
   { type: 'error', name: 'BadQuorum', inputs: [] },
+  { type: 'error', name: 'BadVotingPeriod', inputs: [] },
   { type: 'error', name: 'NotEnoughMembers', inputs: [] },
   { type: 'error', name: 'DuplicateMember', inputs: [] },
   { type: 'error', name: 'AmountExceedsThreshold', inputs: [] },
@@ -171,4 +204,19 @@ export const kittyGovernanceAbi = [
   { type: 'error', name: 'VotingClosed', inputs: [] },
   { type: 'error', name: 'QuorumNotReached', inputs: [] },
   { type: 'error', name: 'UnknownProposal', inputs: [] },
+  { type: 'error', name: 'OnlyHub', inputs: [] },
+  { type: 'error', name: 'WrongTokenId', inputs: [] },
+  { type: 'error', name: 'ZeroAddress', inputs: [] },
+  { type: 'error', name: 'DirectMintNotAllowed', inputs: [] },
+  { type: 'error', name: 'MemoTooLong', inputs: [] },
+  // Inherited from OpenZeppelin ReentrancyGuard / SafeCast.
+  { type: 'error', name: 'ReentrancyGuardReentrantCall', inputs: [] },
+  {
+    type: 'error',
+    name: 'SafeCastOverflowedUintDowncast',
+    inputs: [
+      { name: 'bits', type: 'uint8' },
+      { name: 'value', type: 'uint256' },
+    ],
+  },
 ] as const;
