@@ -1,14 +1,18 @@
+import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, PiggyBank, Send, Sparkles, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs } from '@/components/ui/tabs';
 import { ProposalCard } from '@/components/pot/ProposalCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
+import { HistoryList } from '@/components/pot/HistoryList';
+import { useHistory } from '@/hooks/use-history';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
 import { formatCrc, shortAddress } from '@/lib/utils';
-import type { Address } from '@/types/kitty';
+import type { Address, ProposalView } from '@/types/kitty';
 
 export default function KittyDetailRoute() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +21,20 @@ export default function KittyDetailRoute() {
 
   const governance = (id ?? '') as Address;
   const { state, loading, error, refresh } = useKitty(governance);
+  const { entries: history, loading: historyLoading, refresh: refreshHistory } = useHistory(
+    governance,
+  );
+
+  const proposalsById = useMemo(() => {
+    const map = new Map<string, ProposalView>();
+    state?.proposals.forEach((p) => map.set(p.id.toString(), p));
+    return map;
+  }, [state?.proposals]);
+
+  function refreshAll() {
+    void refresh();
+    void refreshHistory();
+  }
 
   if (!id) {
     return (
@@ -49,19 +67,21 @@ export default function KittyDetailRoute() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => void refresh()}
+          onClick={refreshAll}
           aria-label="Refresh"
           className="px-2"
-          disabled={loading}
+          disabled={loading || historyLoading}
         >
-          <RefreshCw className={loading ? 'size-4 animate-spin' : 'size-4'} />
+          <RefreshCw
+            className={loading || historyLoading ? 'size-4 animate-spin' : 'size-4'}
+          />
         </Button>
       </header>
 
       {error && (
         <Card className="border-rose-500/40 bg-rose-500/5">
           <CardContent>
-            <p className="text-sm text-rose-200">{error.message}</p>
+            <p className="text-sm text-rose-700">{error.message}</p>
           </CardContent>
         </Card>
       )}
@@ -143,39 +163,34 @@ export default function KittyDetailRoute() {
             </CardContent>
           </Card>
 
-          <section className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted)]">
-                Proposals ({state.proposals.length})
-              </h2>
-              <Link
-                to={`/kitty/${governance}/propose`}
-                className="text-xs text-[color-mix(in_oklab,var(--color-accent),white_25%)] hover:underline"
-              >
-                + new
-              </Link>
-            </div>
-            {state.proposals.length === 0 ? (
-              <Card>
-                <CardContent>
-                  <p className="text-sm text-[var(--color-muted)]">
-                    No proposals yet. Time to plan the next group spend.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              [...state.proposals].reverse().map((p) => (
-                <ProposalCard
-                  key={p.id.toString()}
+          <Tabs
+            defaultValue="proposals"
+            options={[
+              {
+                value: 'proposals',
+                label: `Proposals (${state.proposals.filter((p) => !p.executed).length})`,
+              },
+              { value: 'history', label: `History (${history.length})` },
+            ]}
+          >
+            {(active) =>
+              active === 'proposals' ? (
+                <ProposalsPane
                   governance={governance}
-                  proposal={p}
+                  proposals={state.proposals}
                   memberCount={state.members.length}
                   quorumPercent={state.quorumPercent}
-                  onChanged={refresh}
+                  onChanged={refreshAll}
                 />
-              ))
-            )}
-          </section>
+              ) : (
+                <HistoryList
+                  entries={history}
+                  proposalsById={proposalsById}
+                  loading={historyLoading}
+                />
+              )
+            }
+          </Tabs>
 
           <Card>
             <CardContent>
@@ -205,6 +220,63 @@ export default function KittyDetailRoute() {
         </Card>
       )}
     </main>
+  );
+}
+
+function ProposalsPane({
+  governance,
+  proposals,
+  memberCount,
+  quorumPercent,
+  onChanged,
+}: {
+  governance: Address;
+  proposals: ProposalView[];
+  memberCount: number;
+  quorumPercent: number;
+  onChanged: () => void;
+}) {
+  const active = proposals.filter((p) => !p.executed && p.deadline * 1000 > Date.now());
+  if (active.length === 0) {
+    return (
+      <Card>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[var(--color-muted)]">
+              No active proposals. Open a vote for anything above the small-spend cap.
+            </p>
+            <Link
+              to={`/kitty/${governance}/propose`}
+              className="shrink-0 text-xs text-[color-mix(in_oklab,var(--color-accent),black_10%)] hover:underline"
+            >
+              + new
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Link
+          to={`/kitty/${governance}/propose`}
+          className="text-xs text-[color-mix(in_oklab,var(--color-accent),black_10%)] hover:underline"
+        >
+          + new
+        </Link>
+      </div>
+      {[...active].reverse().map((p) => (
+        <ProposalCard
+          key={p.id.toString()}
+          governance={governance}
+          proposal={p}
+          memberCount={memberCount}
+          quorumPercent={quorumPercent}
+          onChanged={onChanged}
+        />
+      ))}
+    </div>
   );
 }
 
