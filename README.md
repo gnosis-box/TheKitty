@@ -2,6 +2,12 @@
 
 > **Chip in. Cash out together.** A shared on-chain pot for groups, on Circles V2.
 
+<p align="center">
+  <img src="docs/screenshots/home.png" alt="Home — your group pots" width="32%" />
+  <img src="docs/screenshots/pool.png" alt="Pool detail" width="32%" />
+  <img src="docs/screenshots/spend.png" alt="Pay or propose" width="32%" />
+</p>
+
 ## What it is
 
 **Tricount tells you who owes who. Lydia holds the money for you if you trust the platform. The Kitty is an automatic shared vault: the rules (votes, spend caps) are public and enforced by code, and the money works for you as long as it keeps moving.**
@@ -16,6 +22,11 @@ It's a Circles V2 mini-app for housemates, families, travel groups, or any small
    - Below the cap → any member pays directly. No vote.
    - Above the cap → any member proposes, others approve. Once quorum is reached, the spend executes.
 4. **Anti-decay**: Circles' demurrage costs idle CRC ~7%/yr. A kitty that keeps the money in motion preserves value that a sleeping wallet would lose.
+
+<p align="center">
+  <img src="docs/screenshots/members.png" alt="Members and deposits" width="48%" />
+  <img src="docs/screenshots/deposit.png" alt="Deposit CRC" width="48%" />
+</p>
 
 ## Why on-chain
 
@@ -59,8 +70,8 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 ## Stack
 
 - **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
-- **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + `@aboutcircles/sdk` for reads
-- **Contracts** — Foundry, Solidity 0.8.24, 27 tests passing
+- **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
+- **Contracts** — Foundry, Solidity 0.8.24, 27 tests passing, Trail of Bits audit pass
 - **Hosting** — Coolify (Docker + Caddy)
 
 ## Status
@@ -69,7 +80,8 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 - [x] Phase 1 — `KittyGovernance` + `KittyFactory` deployed
 - [x] Phase 2 — create-a-kitty UI (1 tx)
 - [x] Phase 3 — deposit, propose, approve, execute, small-spend
-- [ ] Phase 4 — polish (profile enrichment, real demurrage calc, demo video, README screenshots)
+- [x] Phase 4 — playful theme, Circles profile enrichment, history tab
+- [ ] V2 — tontine rotation, redeem, invite links, real demurrage delta
 
 ## License
 
