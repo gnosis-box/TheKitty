@@ -23,14 +23,25 @@ export interface KittyState {
 
 /// Batched on-chain read of everything the detail page needs.
 ///
-/// Two multicall rounds:
-///   1. top-level config + proposal count (so we know how many proposals to fetch)
-///   2. per-member deposits + per-proposal data + hub balance
+/// Strategy:
+///   1. One multicall on the governance ABI for top-level config + proposal count.
+///   2. In parallel: per-member deposits multicall, per-proposal multicall,
+///      and a single Hub `balanceOf` read. Splitting by ABI keeps viem's
+///      multicall typing happy.
 export async function readKittyState(governance: Address): Promise<KittyState> {
   const client = getPublicClient();
   const base = { abi: kittyGovernanceAbi, address: governance } as const;
 
-  const [members, totalDeposited, proposalCount, groupAvatar, potTokenId, smallTxThreshold, quorumPercent, votingPeriod] = (await client.multicall({
+  const [
+    membersRaw,
+    totalDeposited,
+    proposalCount,
+    groupAvatar,
+    potTokenId,
+    smallTxThreshold,
+    quorumPercent,
+    votingPeriod,
+  ] = await client.multicall({
     contracts: [
       { ...base, functionName: 'getMembers' },
       { ...base, functionName: 'totalDeposited' },
@@ -42,71 +53,81 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
       { ...base, functionName: 'votingPeriod' },
     ],
     allowFailure: false,
-  })) as [Address[], bigint, bigint, Address, bigint, bigint, number, number];
-
-  const proposalIds = Array.from({ length: Number(proposalCount) }, (_, i) => BigInt(i));
-
-  const round2 = await client.multicall({
-    contracts: [
-      {
-        abi: hubV2Abi,
-        address: CIRCLES_CONFIG.v2HubAddress,
-        functionName: 'balanceOf',
-        args: [governance, potTokenId],
-      },
-      ...members.map((m) => ({ ...base, functionName: 'deposited' as const, args: [m] })),
-      ...proposalIds.map((id) => ({
-        ...base,
-        functionName: 'getProposal' as const,
-        args: [id],
-      })),
-    ],
-    allowFailure: false,
   });
 
-  let cursor = 0;
-  const potBalance = round2[cursor++] as bigint;
-  const depositsArr = round2.slice(cursor, cursor + members.length) as bigint[];
-  cursor += members.length;
-  const rawProposals = round2.slice(cursor) as ReadonlyArray<{
-    proposer: Address;
-    recipient: Address;
-    amount: bigint;
-    deadline: number;
-    approvals: number;
-    executed: boolean;
-    memo: string;
-  }>;
+  const members = [...membersRaw] as Address[];
+  const proposalIds = Array.from({ length: Number(proposalCount) }, (_, i) => BigInt(i));
+
+  const [depositsArr, rawProposalsArr, potBalance] = await Promise.all([
+    members.length > 0
+      ? client.multicall({
+          contracts: members.map((m) => ({
+            ...base,
+            functionName: 'deposited' as const,
+            args: [m] as const,
+          })),
+          allowFailure: false,
+        })
+      : Promise.resolve([] as bigint[]),
+    proposalIds.length > 0
+      ? client.multicall({
+          contracts: proposalIds.map((id) => ({
+            ...base,
+            functionName: 'getProposal' as const,
+            args: [id] as const,
+          })),
+          allowFailure: false,
+        })
+      : Promise.resolve([] as ReadonlyArray<KittyGovernanceProposalTuple>),
+    client.readContract({
+      abi: hubV2Abi,
+      address: CIRCLES_CONFIG.v2HubAddress,
+      functionName: 'balanceOf',
+      args: [governance, potTokenId],
+    }),
+  ]);
 
   const deposits: Record<string, bigint> = {};
   members.forEach((m, i) => {
-    deposits[m.toLowerCase()] = depositsArr[i] ?? 0n;
+    deposits[m.toLowerCase()] = (depositsArr[i] as bigint | undefined) ?? 0n;
   });
 
-  const proposals: ProposalView[] = rawProposals.map((p, i) => ({
-    id: proposalIds[i],
-    proposer: p.proposer,
-    recipient: p.recipient,
-    amount: p.amount,
-    deadline: p.deadline,
-    approvals: p.approvals,
-    executed: p.executed,
-    memo: p.memo,
-  }));
+  const proposals: ProposalView[] = (rawProposalsArr as ReadonlyArray<KittyGovernanceProposalTuple>).map(
+    (p, i) => ({
+      id: proposalIds[i],
+      proposer: p.proposer,
+      recipient: p.recipient,
+      amount: p.amount,
+      deadline: Number(p.deadline),
+      approvals: Number(p.approvals),
+      executed: p.executed,
+      memo: p.memo,
+    }),
+  );
 
   return {
     governance,
-    groupAvatar,
-    potTokenId,
+    groupAvatar: groupAvatar as Address,
+    potTokenId: potTokenId as bigint,
     members,
     quorumPercent: Number(quorumPercent),
-    smallTxThreshold,
+    smallTxThreshold: smallTxThreshold as bigint,
     votingPeriod: Number(votingPeriod),
-    totalDeposited,
-    potBalance,
+    totalDeposited: totalDeposited as bigint,
+    potBalance: potBalance as bigint,
     deposits,
     proposals,
   };
+}
+
+interface KittyGovernanceProposalTuple {
+  proposer: Address;
+  recipient: Address;
+  amount: bigint;
+  deadline: number | bigint;
+  approvals: number | bigint;
+  executed: boolean;
+  memo: string;
 }
 
 /// Has `member` already approved this proposal?
@@ -116,36 +137,30 @@ export async function readHasVoted(args: {
   member: Address;
 }): Promise<boolean> {
   const client = getPublicClient();
-  return (await client.readContract({
+  return await client.readContract({
     abi: kittyGovernanceAbi,
     address: args.governance,
     functionName: 'hasVoted',
     args: [args.proposalId, args.member],
-  })) as boolean;
+  });
 }
 
 /// Read the user's personal CRC balance (id = toTokenId(userAvatar)).
 /// Useful for the deposit page to show available funds.
 export async function readPersonalCrcBalance(userAvatar: Address): Promise<bigint> {
   const client = getPublicClient();
-  const [tokenId] = (await client.multicall({
-    contracts: [
-      {
-        abi: hubV2Abi,
-        address: CIRCLES_CONFIG.v2HubAddress,
-        functionName: 'toTokenId',
-        args: [userAvatar],
-      },
-    ],
-    allowFailure: false,
-  })) as [bigint];
-
-  return (await client.readContract({
+  const tokenId = await client.readContract({
+    abi: hubV2Abi,
+    address: CIRCLES_CONFIG.v2HubAddress,
+    functionName: 'toTokenId',
+    args: [userAvatar],
+  });
+  return await client.readContract({
     abi: hubV2Abi,
     address: CIRCLES_CONFIG.v2HubAddress,
     functionName: 'balanceOf',
     args: [userAvatar, tokenId],
-  })) as bigint;
+  });
 }
 
 /// Decide if the *next* approve will meet quorum.
