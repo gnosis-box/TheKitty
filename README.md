@@ -46,7 +46,7 @@ KittyFactory  ──── createKitty() ─────► BaseGroupFactory →
 
 ## Deployed (Gnosis Chain, chainId 100)
 
-- KittyFactory: [`0x3a182fC64683A09B77C961E0fb9f1Abfb6bb0314`](https://gnosisscan.io/address/0x3a182fC64683A09B77C961E0fb9f1Abfb6bb0314)
+- KittyFactory: [`0x21539cb2b5a80C88a0D05E631662972589bD010A`](https://gnosisscan.io/address/0x21539cb2b5a80C88a0D05E631662972589bD010A)
 - Built on Circles V2 Hub `0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8` + BaseGroupFactory `0xD0B5Bd9962197BEaC4cbA24244ec3587f19Bd06d`.
 
 ## Try it
