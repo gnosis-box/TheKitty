@@ -2,11 +2,22 @@
 
 > **Chip in. Cash out together.** A shared on-chain pot for groups, on Circles V2.
 
-<p align="center">
-  <img src="docs/screenshots/home.png" alt="Home — your group pots" width="32%" />
-  <img src="docs/screenshots/pool.png" alt="Pool detail" width="32%" />
-  <img src="docs/screenshots/spend.png" alt="Pay or propose" width="32%" />
-</p>
+<table>
+  <tr>
+    <td width="33%" valign="top" align="center">
+      <img src="docs/screenshots/home.png" alt="Home — your group pots" />
+      <br /><sub><b>Your group pots</b></sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <img src="docs/screenshots/pool.png" alt="Pool detail" />
+      <br /><sub><b>Pool detail</b></sub>
+    </td>
+    <td width="33%" valign="top" align="center">
+      <img src="docs/screenshots/spend.png" alt="Pay or propose" />
+      <br /><sub><b>Pay or propose</b></sub>
+    </td>
+  </tr>
+</table>
 
 ## What it is
 
@@ -23,10 +34,18 @@ It's a Circles V2 mini-app for housemates, families, travel groups, or any small
    - Above the cap → any member proposes, others approve. Once quorum is reached, the spend executes.
 4. **Anti-decay**: Circles' demurrage costs idle CRC ~7%/yr. A kitty that keeps the money in motion preserves value that a sleeping wallet would lose.
 
-<p align="center">
-  <img src="docs/screenshots/members.png" alt="Members and deposits" width="48%" />
-  <img src="docs/screenshots/deposit.png" alt="Deposit CRC" width="48%" />
-</p>
+<table>
+  <tr>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/screenshots/members.png" alt="Members and deposits" />
+      <br /><sub><b>Members & deposits</b> — per-member contribution tracker.</sub>
+    </td>
+    <td width="50%" valign="top" align="center">
+      <img src="docs/screenshots/deposit.png" alt="Deposit CRC" />
+      <br /><sub><b>Deposit</b> — bundle of groupMint + ERC-1155 transfer in one signature.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Why on-chain
 
