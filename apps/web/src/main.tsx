@@ -17,7 +17,7 @@ createRoot(container).render(
     <BrowserRouter>
       <WalletProvider>
         <App />
-        <Toaster theme="dark" position="top-center" richColors closeButton />
+        <Toaster theme="light" position="top-center" richColors closeButton />
       </WalletProvider>
     </BrowserRouter>
   </StrictMode>,

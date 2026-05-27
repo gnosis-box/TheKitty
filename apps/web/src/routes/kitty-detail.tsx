@@ -1,10 +1,10 @@
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, PiggyBank, Send, Sparkles, RefreshCw } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ProposalCard } from '@/components/pot/ProposalCard';
+import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
 import { formatCrc, shortAddress } from '@/lib/utils';
@@ -132,15 +132,10 @@ export default function KittyDetailRoute() {
               {state.members.map((m) => (
                 <div
                   key={m}
-                  className="flex items-center justify-between rounded-lg bg-[var(--color-surface-hi)] px-3 py-2"
+                  className="flex items-center gap-3 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs">{shortAddress(m)}</span>
-                    {address?.toLowerCase() === m.toLowerCase() && (
-                      <Badge tone="accent">you</Badge>
-                    )}
-                  </div>
-                  <span className="font-mono text-xs text-[var(--color-muted)]">
+                  <MemberAvatar address={m} size="sm" selfAddress={address} className="flex-1" />
+                  <span className="shrink-0 font-mono text-xs text-[var(--color-muted)]">
                     {formatCrc(state.deposits[m.toLowerCase()] ?? 0n)} CRC
                   </span>
                 </div>

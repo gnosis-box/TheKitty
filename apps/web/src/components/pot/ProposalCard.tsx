@@ -5,10 +5,11 @@ import { Check, ExternalLink, PartyPopper } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { useWallet } from '@/hooks/use-wallet';
 import { readHasVoted, nextApproveMeetsQuorum, proposalReady } from '@/lib/kitty-reader';
 import { buildApproveTx, buildExecuteTx } from '@/lib/tx-builders';
-import { formatCrc, relativeTime, shortAddress } from '@/lib/utils';
+import { formatCrc, relativeTime } from '@/lib/utils';
 import type { Address, ProposalView } from '@/types/kitty';
 
 interface Props {
@@ -130,7 +131,7 @@ export function ProposalCard({
             <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
               To
             </p>
-            <p className="font-mono text-xs">{shortAddress(proposal.recipient)}</p>
+            <MemberAvatar address={proposal.recipient} size="xs" />
           </div>
           <div className="rounded-lg bg-[var(--color-surface-hi)] px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
@@ -140,15 +141,15 @@ export function ProposalCard({
           </div>
         </div>
 
-        <p className="text-xs text-[var(--color-muted)]">
-          Proposed by{' '}
-          <span className="font-mono">{shortAddress(proposal.proposer)}</span>
+        <div className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+          <span>Proposed by</span>
+          <MemberAvatar address={proposal.proposer} size="xs" />
           {isMine && (
-            <Badge tone="accent" className="ml-2">
+            <Badge tone="accent" className="ml-auto">
               you
             </Badge>
           )}
-        </p>
+        </div>
 
         {!proposal.executed && !expired && (
           <div className="flex gap-2">

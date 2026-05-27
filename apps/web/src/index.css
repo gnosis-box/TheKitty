@@ -1,31 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b0b0c;
-  --color-surface: #141416;
-  --color-surface-hi: #1c1c20;
-  --color-border: #2a2a30;
-  --color-text: #ededee;
-  --color-muted: #8a8a93;
-  --color-accent: #7c5cff;
+  --color-bg: #fff7ed;
+  --color-bg-soft: #ffe9d6;
+  --color-surface: #ffffff;
+  --color-surface-hi: #ffe2c7;
+  --color-border: #f3d4b2;
+  --color-text: #2b1d12;
+  --color-muted: #8a715e;
+  --color-accent: #ff7a47;
+  --color-accent-soft: #ffe4d6;
   --color-accent-fg: #ffffff;
-  --color-success: #4ade80;
-  --color-danger: #f87171;
-  --radius-card: 14px;
+  --color-success: #20b06b;
+  --color-warning: #f0b400;
+  --color-danger: #e5484d;
+  --color-shadow: rgba(255, 122, 71, 0.35);
+  --radius-card: 22px;
 }
 
 :root {
-  color-scheme: dark;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color-scheme: light;
+  font-family: ui-rounded, "SF Pro Rounded", "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
-  background: var(--color-bg);
+  background:
+    radial-gradient(circle at 0% 0%, var(--color-bg-soft) 0%, transparent 55%),
+    radial-gradient(circle at 100% 100%, #ffd6a8 0%, transparent 45%),
+    var(--color-bg);
   color: var(--color-text);
 }
 
