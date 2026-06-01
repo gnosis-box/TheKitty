@@ -11,7 +11,7 @@ export interface KittyRef {
   name: string;
   /// 3-4 letter symbol used for the ERC-1155 group token.
   symbol: string;
-  /// Member Safe addresses, in creation order.
+  /// Member Circles wallet addresses, in creation order.
   members: Address[];
   /// Quorum required (1-100). 51 = simple majority.
   quorumPercent: number;

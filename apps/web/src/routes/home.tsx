@@ -125,8 +125,8 @@ export default function HomeRoute() {
         <Card>
           <CardContent>
             <p className="text-sm text-[var(--color-muted)]">
-              The Kitty needs the Circles host to inject your Safe wallet — open this URL inside
-              the official playground to start.
+              The Kitty needs the Circles host to inject your Circles wallet — open this URL
+              inside the official playground to start.
             </p>
             <div className="mt-3">
               <OpenInPlayground />

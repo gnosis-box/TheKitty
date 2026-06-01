@@ -37,7 +37,7 @@ export interface CreateKittyInputs {
   name: string;
   /// 3-4 letter symbol for the ERC-1155 group token.
   symbol: string;
-  /// Member Safe addresses. Must be >= 2 and all unique. For tontine mode,
+  /// Member Circles wallet addresses. Must be >= 2 and all unique. For tontine mode,
   /// the order of this list is the rotation order — index 0 claims round 0.
   members: Address[];
   /// 1-100. 51 = simple majority.

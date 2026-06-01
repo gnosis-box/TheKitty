@@ -255,7 +255,7 @@ export default function KittyNewRoute() {
             <CardDescription>
               {form.mode === 'tontine'
                 ? 'Order is the rotation order. Index 0 claims round 0.'
-                : 'Safe addresses that can deposit, propose and vote. Min 2, no duplicates.'}
+                : 'Circles addresses that can deposit, propose and vote. Min 2, no duplicates.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -482,7 +482,7 @@ export default function KittyNewRoute() {
             >
               circles.gnosis.io/playground
             </a>{' '}
-            — to sign with your Safe.
+            — to sign with your Circles wallet.
           </p>
         ) : (
           <p className="text-center text-xs text-[var(--color-muted)]">

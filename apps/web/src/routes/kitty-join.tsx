@@ -146,7 +146,7 @@ export default function KittyJoinRoute() {
               <CardContent>
                 <p className="text-sm text-[var(--color-muted)]">
                   Open this app inside the Circles host to opt in — the host wallet injects
-                  your Safe address.
+                  your Circles address.
                 </p>
               </CardContent>
             </Card>
@@ -172,8 +172,8 @@ export default function KittyJoinRoute() {
                 {signing ? 'Opening trust…' : 'Opt in · 1 signature'}
               </Button>
               <p className="text-center text-xs text-[var(--color-muted)]">
-                Signs <code>Hub.trust(group)</code> from your Safe so the kitty can pull your CRC
-                into the pool when you deposit.
+                Signs <code>Hub.trust(group)</code> from your Circles wallet so the kitty can
+                pull your CRC into the pool when you deposit.
               </p>
             </>
           )}
