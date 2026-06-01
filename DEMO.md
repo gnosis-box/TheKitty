@@ -1,108 +1,157 @@
 # Demo runbook — Circles Garage
 
-90 seconds, single-screen, pre-loaded state, live final act.
+90 seconds, mobile-first, pre-loaded state, one live claim.
 
-## Pitch beat (oral, 10s)
+## Pitch (10s, oral)
 
-> Tontines and sou-sou are how a billion people save together. The Kitty
-> makes the rotation a smart contract: every round, one Circles human
-> takes the whole pot. No organizer, no rug.
+> Sou-sou, tanda, hui — tontines. Hundreds of millions of people save
+> together this way. Whoever runs the round holds the money. We replaced
+> the organizer with a smart contract on Circles. Every round, the pot
+> rotates to the next member, on-chain.
 
-## The story arc (90s)
+## The 90-second story arc
 
-| t | What's on screen | What you say |
+| t | Screen | Spoken beat |
 |---|---|---|
-| 0-10s | Home, the demo kitty visible | "Five neighbours, fifty CRC each, monthly round." |
-| 10-25s | Open kitty-detail, tontine card front and center | "Round 3 of 5. Maria's turn. The pot is 250 CRC." |
-| 25-40s | Rotation roster: 2 checkmarks, 1 highlighted, 2 upcoming | "Past rounds already paid out on-chain. Anyone can audit." |
-| 40-70s | Big "Claim 250 CRC" CTA — sign the Safe tx live | "Maria claims. One transaction, the contract enforces it's her turn." |
-| 70-85s | Confirmation, balance updates, next claimer highlighted | "Next month, the contract rotates to the next member." |
-| 85-90s | Brief return to home | "Programmable mutual aid on Circles. Done." |
+| 0-10s | Home of The Kitty, demo tontine visible in the list with the orange "tontine" badge | "Six members. Fifty CRC each. Monthly round." |
+| 10-25s | Open the kitty → detail page. TontineCard sits front and center: Round N, current claimer avatar, countdown ticking | "Round 3 of 6. Maria's turn. The pot is 300 CRC." |
+| 25-40s | Rotation roster scrolls: two checkmarks past, one highlighted current, three faded upcoming | "Past payouts are already on-chain. Anyone can audit." |
+| 40-70s | Tap the big primary CTA "Claim 300 CRC" → Safe sheet → sign → confirmation animation | "Maria claims her round. One transaction. The contract verifies it's her turn and rotates automatically." |
+| 70-85s | Balance updates, "your turn" badge moves to the next member, countdown resets | "Next month, the rotation moves to the next member. No organizer ever held the pot." |
+| 85-90s | Brief return to home, demo tontine on the list now shows the next round | "Programmable mutual aid on Circles. Done." |
 
-## Pre-demo checklist (run the day before)
+## Pre-demo checklist
 
-### 1. Deploy the new factory
+Run the day before. The current production factory is
+`0x880E213224Ce5B6B8a01A21D4318819c67146533` on Gnosis Chain (chain id
+100). The front-end is deployed at `https://thekitty.gnosis.box`.
 
-The contract changed (tontine extension). Old factory `0x21539cb2b5a80C88a0D05E631662972589bD010A` doesn't know `claimRound`.
+### 1. Verify the build is current
 
-```bash
-cd contracts
-# Make sure .env has PRIVATE_KEY, GNOSIS_RPC, HUB_ADDRESS, BASE_GROUP_FACTORY
-forge script script/Deploy.s.sol \
-  --rpc-url $GNOSIS_RPC \
-  --broadcast \
-  --verify
+Open `https://thekitty.gnosis.box` in a private window. Dev tools →
+Sources → main bundle → search for `880E213224Ce5B6B8a01A21D4318819c67146533`
+(case-insensitive). It must appear. If it doesn't, Coolify served a stale
+bundle — force a rebuild with the right `VITE_KITTY_FACTORY` in **Build
+environment** (not Runtime).
+
+### 2. Seed the demo tontine
+
+Open the app inside the playground as the *creator* Safe:
+
+```
+https://circles.gnosis.io/playground?url=https%3A%2F%2Fthekitty.gnosis.box%2F
 ```
 
-Copy the new factory address into `apps/web/.env.local`:
+On the home, tap **Start a tontine** (primary orange CTA — the secondary
+"Or a group pot" link goes to the free-pot form, ignore it for the demo).
 
-```
-VITE_KITTY_FACTORY=0x<new-factory-address>
-```
-
-Then redeploy the front-end (Coolify or `bun build && vite preview`).
-
-### 2. Create the demo kitty
-
-Open the app inside the Circles playground as the *creator* Safe.
-
-- **Mode**: Rotating tontine
+Form values:
 - **Name**: `Demo Round`
 - **Symbol**: `DEMO`
-- **Members** (in rotation order — index 0 claims round 0):
+- **Members** (order = rotation order, index 0 claims round 0; use up/down
+  arrows to reorder):
   1. Member A — `0x...`
   2. Member B — `0x...`
   3. Member C — `0x...`
   4. Member D — `0x...`
-  5. Member E (will claim live) — `0x...`
-- **Quorum**: 51% (irrelevant for the tontine path but the contract requires it)
-- **Small spend cap**: `5` CRC
-- **Voting period**: `24` hours
-- **Round length**: `30` days
-- **Per-member contribution**: `50` CRC
-- **First claim opens in**: pick a value such that **round 3 opens roughly during your slot** if you let rounds 0-2 advance, OR set it to **0** and manually advance the clock by claiming as members A→B→C before the demo.
+  5. Member E (will claim live on stage) — `0x...`
+- **Round length**: `1 minute` *for live testing*, or set to your real
+  demo cadence. The dropdown next to the number picks the unit
+  (seconds / minutes / hours / days).
+- **Per-member contribution**: `1` CRC (small, easy to reason about)
+- **First claim opens in**: `0` days — the client adds a 60-second buffer
+  automatically to dodge the firstClaimAt race against `block.timestamp`,
+  so round 0 will be claimable about a minute after creation.
 
-For a single-slot demo, the cleaner play is:
-- Set first-claim delay to `0`
-- Have members A, B, C each `claimRound` from their Safe in advance
-- On demo day, the kitty is already at round 3, member D's turn
-- ⚠️ Don't claim as D yet — that's your live act.
+Tap **Start the tontine**, sign in the Safe sheet.
 
-### 3. Pre-fund the pot
+### 3. Share the invite link to each member
 
-Each of the 5 members deposits their contribution:
-
-- Open the kitty → Deposit
-- Amount: `50` CRC
-- Sign
-
-Pot balance after 5 deposits: `250 CRC`. Each claim drains `250 CRC` and the next member's turn opens 30 days later (so in practice, the pre-claimed rounds in step 2 already drained the pot; you'll need to **top up** before the live demo so member D's claim has 250 CRC available).
-
-Safer pre-demo state: keep all 5 deposits intact and DON'T pre-claim. Set first-claim delay to `0` and the live demo shows round 0 (member A's turn). Less narrative arc, fewer moving parts.
-
-### 4. Test the playground link
+On the kitty detail page, tap the **share pill** in the header. It copies
+or shares a link of the form:
 
 ```
-https://circles.gnosis.io/playground?url=<your-deploy-url>
+https://circles.gnosis.io/playground?url=https%3A%2F%2Fthekitty.gnosis.box%2Fkitty%2F<governance>%2Fjoin%3Fvia%3D<creator>
 ```
 
-Open on a phone. Verify:
-- Wallet detected, address badge top right
-- Home shows the demo kitty
-- Detail page shows the tontine card with the right round number
-- "Your turn" badge appears when the viewing Safe is the current claimer
-- Countdown stops at 0 if `nextClaimAt` is in the past
+Each member opens it in their playground, lands on `/kitty/<gov>/join`,
+taps **Opt in · 1 signature**, signs `Hub.trust(group)` from their Safe.
+That's the only friction they hit.
+
+### 4. Pre-fund the pot
+
+Each member deposits their `1 CRC` contribution. Pot balance after 5
+deposits: `5 CRC` = `roundContribution × memberCount` = round payout.
+
+Two safer routes if you don't want to coordinate 5 humans live:
+- **One operator route**: do members A-D's deposits from your own Safes
+  before the demo. Member E (you) is the only one whose deposit happens
+  live — or even pre-deposit E and just claim live.
+- **Pre-claim 0-2**: have rounds 0, 1, 2 already claimed before stage
+  time so the demo starts on round 3. Every claim drains the pot, so
+  **top up before each claim** to keep the pot at exactly
+  `roundContribution × memberCount`. If you can't top up between rounds,
+  do a fresh setup with `firstClaimDelay = 0` and demo round 0 directly.
+
+The cleanest single-slot demo setup: 5 members deposited once, demo
+shows round 0 with member A claiming live. Less narrative ("first
+round!") but zero moving parts.
+
+### 5. Verify on a phone
+
+Open the playground link on your phone (and a backup phone if you have
+one). Verify:
+
+- App loads inside the iframe
+- Connected Safe badge top right
+- Home shows the seeded tontine with the **tontine** badge and
+  `5 members · 1 CRC / round` detail line
+- Tap into the kitty → TontineCard renders with round number,
+  countdown ticking, current claimer avatar
+- "your turn" badge appears when you're the current claimer
+- Claim CTA enables when the countdown hits 0
 
 ## Backup plans
 
-- **Tx hangs**: hub.aboutcircles.com sometimes lags. Keep a second tab open with the playground URL and the demo kitty pre-loaded; if the first tab gets stuck, switch.
-- **Wrong member tries to claim**: contract reverts `NotYourTurn`. The UI hides the CTA from non-claimers but if you mis-signed from the wrong Safe, the tx fails fast. No state corruption.
-- **Round not ready**: contract reverts `RoundNotReady`. Means `block.timestamp < nextClaimAt`. Fix by setting `firstClaimAt` to now (chain time may drift from local time by a few seconds at round boundaries).
-- **No CRC in the pot**: contract calls `Hub.safeTransferFrom` which reverts on insufficient balance. Always pre-fund.
+- **Hub lag**: occasionally `pathfinder.aboutcircles.com` and the V2 Hub
+  return slowly. Keep a second tab open with the playground URL
+  pre-loaded. If the first stalls, switch.
+- **Wrong member signs**: contract reverts `NotYourTurn` (0x6c08c5a5). The
+  UI hides the claim CTA from non-claimers, so this only happens if you
+  switched Safes server-side and didn't reload. Reload + sign from the
+  right Safe.
+- **RoundNotReady** (0xa9ab86fa): countdown not finished yet. Wait a few
+  seconds, the timer ticks every second. If the chain's `block.timestamp`
+  is more than a minute behind the device clock, force a soft refresh.
+- **BadTontineParams** at create time (0x60c8fda8): the 60-second
+  firstClaimAt buffer should prevent this — but if it still hits, the
+  device clock is drifting more than 60 seconds behind real time. Fix the
+  device clock and retry.
+- **Empty pot at claim time** (Hub revert): the pot didn't have
+  `roundContribution × memberCount` available. Top up before clicking
+  claim. The contract rolls back rotation state on failed transfer, so
+  `currentRound` does NOT advance — the next try will be cleaner.
 
 ## What NOT to demo
 
-- The free-pot mode (propose/approve/execute). Mention it exists; don't show it. Too many txs.
-- The history tab. Visually busy, distracts from the round claim.
-- The deposit flow. Too many signatures.
-- Anything around demurrage delta — the placeholder is intentionally cosmetic.
+- The free-pot mode (Or a group pot). Mention it exists as a secondary
+  mode if asked; don't show it. Too many txs for 90s, and it dilutes the
+  tontine pitch.
+- The history tab. It's noisy and pulls attention from the claim moment.
+- The deposit form. Pre-fund before stage time and stay on the claim
+  story.
+- Anything from the free-pot governance fields (quorum, small cap,
+  voting period). In a tontine kitty the UI already hides them — but if
+  the demo accidentally lands on a free pot they re-appear, which breaks
+  the narrative.
+
+## After the demo
+
+The contract holds your `currentRound` and `nextClaimAt` state — leave
+the kitty as-is to use as the live proof artifact during the Q&A. Have
+the gnosisscan link to the governance contract ready in case a judge
+asks "show me the code on-chain":
+
+- Factory: https://gnosisscan.io/address/0x880E213224Ce5B6B8a01A21D4318819c67146533
+- The demo kitty's governance address (note it after creation in
+  step 2): https://gnosisscan.io/address/0x...
