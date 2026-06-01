@@ -580,12 +580,18 @@ function validate(form: FormState, _self: Address | null): Validation {
     if (!Number.isFinite(firstClaimDelayDays) || firstClaimDelayDays < 0) {
       return { ...fallback, error: 'First-claim delay must be zero or more days.' };
     }
+    // Add a 60-second buffer to dodge the race between "now" computed in
+    // the browser and `block.timestamp` at tx execution time. Without it,
+    // firstClaimDelayDays=0 always reverts BadTontineParams because the
+    // chain has advanced a few seconds since the form was submitted.
     const now = Math.floor(Date.now() / 1000);
+    const FIRST_CLAIM_BUFFER_SECONDS = 60;
     tontine = {
       enabled: true,
       roundDurationSeconds,
       roundContribution: contribution,
-      firstClaimAtSeconds: now + Math.floor(firstClaimDelayDays * 86400),
+      firstClaimAtSeconds:
+        now + FIRST_CLAIM_BUFFER_SECONDS + Math.floor(firstClaimDelayDays * 86400),
     };
   }
 
