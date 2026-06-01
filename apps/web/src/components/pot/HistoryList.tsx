@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { ExternalLink, PartyPopper, Trophy, Zap } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -92,7 +93,7 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
 
 interface EntryMeta {
   title: string;
-  icon: JSX.Element;
+  icon: ReactNode;
   iconBg: string;
   recipientLabel: string;
   amountPrefix: string;
