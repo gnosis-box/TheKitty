@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/social-1280x640.png" alt="The Kitty — on-chain tontines for Circles" width="720" />
+</p>
+
 # The Kitty
 
 > **Programmable mutual aid for Circles communities.** A shared on-chain pot with rules in code, on Gnosis Chain.
