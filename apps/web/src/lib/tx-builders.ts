@@ -15,7 +15,12 @@ export const TRUST_EXPIRY_NEVER: bigint = (1n << 96n) - 1n;
 /// MUST be zero — the contract reverts with `BadTontineParams` otherwise.
 /// When enabled, each member claims in turn (by index) once `firstClaimAt`
 /// has been reached, with `roundDuration` seconds between rounds. The payout
-/// per round is `roundContribution * memberCount`.
+/// per round is `roundContribution * memberCount`. `cycleRounds` bounds the
+/// total rounds before the kitty enters Phase.Complete (set to memberCount
+/// for one full rotation, a multiple for more). `stakeAmount` is the
+/// per-member penalty stake — 0 disables the stake mechanism entirely
+/// (honor system); when > 0 the kitty starts in Phase.Setup until every
+/// member has called depositStake.
 export interface TontineInput {
   enabled: boolean;
   roundDurationSeconds: number;
@@ -23,6 +28,8 @@ export interface TontineInput {
   /// Unix timestamp (seconds) at which round 0 becomes claimable. Must be
   /// >= current block timestamp.
   firstClaimAtSeconds: number;
+  cycleRounds: number;
+  stakeAmount: bigint;
 }
 
 export const TONTINE_DISABLED: TontineInput = {
@@ -30,6 +37,8 @@ export const TONTINE_DISABLED: TontineInput = {
   roundDurationSeconds: 0,
   roundContribution: 0n,
   firstClaimAtSeconds: 0,
+  cycleRounds: 0,
+  stakeAmount: 0n,
 };
 
 export interface CreateKittyInputs {
@@ -106,6 +115,8 @@ export function buildCreateKittyTx(inputs: CreateKittyInputs): MiniappTransactio
           roundDuration: tontine.roundDurationSeconds,
           roundContribution: tontine.roundContribution,
           firstClaimAt: tontine.firstClaimAtSeconds,
+          cycleRounds: tontine.cycleRounds,
+          stakeAmount: tontine.stakeAmount,
         },
       },
     ],
@@ -221,6 +232,38 @@ export function buildClaimRoundTx(args: { governance: Address }): MiniappTransac
     data: encodeFunctionData({
       abi: kittyGovernanceAbi,
       functionName: 'claimRound',
+      args: [],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `depositStake` tx — the second half of the two-step stake flow.
+/// The member must have already transferred `stakeAmount` worth of pot
+/// tokens into the kitty (bundle via buildDepositBundle); this call
+/// reclassifies that deposit as the penalty stake and bumps the
+/// stakedMemberCount.
+export function buildDepositStakeTx(args: { governance: Address }): MiniappTransaction {
+  return {
+    to: args.governance,
+    data: encodeFunctionData({
+      abi: kittyGovernanceAbi,
+      functionName: 'depositStake',
+      args: [],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `withdrawStake` tx — only available once the kitty enters
+/// Phase.Complete. Returns the member's remaining stake (whatever wasn't
+/// slashed for defaults) as pot tokens to the caller.
+export function buildWithdrawStakeTx(args: { governance: Address }): MiniappTransaction {
+  return {
+    to: args.governance,
+    data: encodeFunctionData({
+      abi: kittyGovernanceAbi,
+      functionName: 'withdrawStake',
       args: [],
     }),
     value: '0',

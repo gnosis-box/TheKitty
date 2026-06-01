@@ -32,6 +32,13 @@ interface FormState {
   roundUnit: RoundUnit;
   roundContributionCrc: string;
   firstClaimDelayDays: string;
+  /// How many rotations of the member list make up one cycle. 1 = each
+  /// member claims once, then withdrawStake. Higher = multiple rotations
+  /// before stakes refund.
+  cyclesCount: string;
+  /// Per-member penalty stake in CRC. Empty / 0 = honor system (no Setup
+  /// phase, no slashing on default).
+  stakeCrc: string;
 }
 
 type RoundUnit = 'seconds' | 'minutes' | 'hours' | 'days';
@@ -55,6 +62,8 @@ const DEFAULTS: FormState = {
   roundUnit: 'days',
   roundContributionCrc: '50',
   firstClaimDelayDays: '30',
+  cyclesCount: '1',
+  stakeCrc: '0',
 };
 
 export default function KittyNewRoute() {
@@ -164,6 +173,8 @@ export default function KittyNewRoute() {
           ? {
               roundContribution: validation.tontine.roundContribution.toString(),
               roundDuration: validation.tontine.roundDurationSeconds,
+              cycleRounds: validation.tontine.cycleRounds,
+              stakeAmount: validation.tontine.stakeAmount.toString(),
             }
           : {}),
       };
@@ -451,6 +462,52 @@ export default function KittyNewRoute() {
                   Use 0 to let round 0 be claimable as soon as the pot is funded.
                 </p>
               </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="cyclesCount">Cycles · how many rotations</Label>
+                <Input
+                  id="cyclesCount"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={form.cyclesCount}
+                  onChange={(e) => setField('cyclesCount', e.target.value)}
+                  required
+                />
+                <p className="text-xs text-[var(--color-muted)]">
+                  1 means each member claims once. Higher = multiple rotations
+                  before stakes are refundable.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {form.mode === 'tontine' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Penalty stake (optional)</CardTitle>
+              <CardDescription>
+                Locks an extra deposit per member that gets slashed if they default
+                on a round. Set to 0 for an honor-system tontine.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="stakeCrc">Penalty stake · CRC per member</Label>
+                <Input
+                  id="stakeCrc"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.stakeCrc}
+                  onChange={(e) => setField('stakeCrc', e.target.value)}
+                />
+                <p className="text-xs text-[var(--color-muted)]">
+                  When non-zero, defaulting members lose 2× their shortfall
+                  from this stake. The kitty waits for everyone to stake before
+                  round 0 opens.
+                </p>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -509,6 +566,8 @@ const TONTINE_OFF: TontineInput = {
   roundDurationSeconds: 0,
   roundContribution: 0n,
   firstClaimAtSeconds: 0,
+  cycleRounds: 0,
+  stakeAmount: 0n,
 };
 
 function validate(form: FormState, _self: Address | null): Validation {
@@ -590,12 +649,33 @@ function validate(form: FormState, _self: Address | null): Validation {
     // chain has advanced a few seconds since the form was submitted.
     const now = Math.floor(Date.now() / 1000);
     const FIRST_CLAIM_BUFFER_SECONDS = 60;
+
+    // Total rounds = members.length * cyclesCount, so cyclesCount=1 means
+    // one full rotation before the cycle completes and stakes refund.
+    const cyclesCount = Number(form.cyclesCount);
+    if (!Number.isInteger(cyclesCount) || cyclesCount < 1) {
+      return { ...fallback, error: 'Cycles count must be a positive integer.' };
+    }
+    const cycleRounds = members.length * cyclesCount;
+
+    let stakeAmount: bigint;
+    try {
+      stakeAmount = parseUnits(form.stakeCrc || '0', 18);
+    } catch {
+      return { ...fallback, error: 'Penalty stake is not a valid number.' };
+    }
+    if (stakeAmount < 0n) {
+      return { ...fallback, error: 'Penalty stake cannot be negative.' };
+    }
+
     tontine = {
       enabled: true,
       roundDurationSeconds,
       roundContribution: contribution,
       firstClaimAtSeconds:
         now + FIRST_CLAIM_BUFFER_SECONDS + Math.floor(firstClaimDelayDays * 86400),
+      cycleRounds,
+      stakeAmount,
     };
   }
 

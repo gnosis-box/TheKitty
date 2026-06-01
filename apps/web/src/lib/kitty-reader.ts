@@ -4,6 +4,14 @@ import { kittyGovernanceAbi } from './abi/kitty-governance';
 import { getPublicClient } from './public-client';
 import type { Address, ProposalView } from '@/types/kitty';
 
+/// Lifecycle phase of a tontine kitty.
+///   Setup    — stake-mode kitties wait here for every member to call
+///              depositStake; honor-system kitties skip this state.
+///   Active   — deposits + claims + proposals allowed.
+///   Complete — cycleRounds claims have been settled; members can withdraw
+///              their remaining stake.
+export type KittyPhase = 'setup' | 'active' | 'complete';
+
 export interface TontineState {
   /// True if this kitty was created in rotating-savings mode.
   enabled: boolean;
@@ -13,6 +21,8 @@ export interface TontineState {
   roundContribution: bigint;
   /// 0-indexed round number to be claimed next. 0 when disabled.
   currentRound: number;
+  /// Total rounds in one cycle. 0 when disabled.
+  cycleRounds: number;
   /// Unix timestamp (seconds) at which the current round becomes claimable.
   /// 0 when disabled.
   nextClaimAt: number;
@@ -20,6 +30,20 @@ export interface TontineState {
   currentClaimer: Address;
   /// Computed payout per round = roundContribution * memberCount.
   roundPayout: bigint;
+  /// Penalty stake required from each member at join time. 0 = honor system
+  /// (no Setup phase, no slashing).
+  stakeAmount: bigint;
+  /// Lifecycle phase. Derived from `phase()` view.
+  phase: KittyPhase;
+  /// How many members have called depositStake. Used to render the
+  /// "X / N members staked" progress in the Setup banner.
+  stakedMemberCount: number;
+  /// Per-member current stake balance (decreases on slash). Keyed by
+  /// lowercased address.
+  staked: Record<string, bigint>;
+  /// Per-member hasStaked flag. Keyed by lowercased address. Used to gate
+  /// the "Stake N CRC" button on the detail page.
+  hasStaked: Record<string, boolean>;
 }
 
 export interface KittyState {
@@ -67,6 +91,10 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
     roundContribution,
     currentRound,
     nextClaimAt,
+    cycleRounds,
+    stakeAmount,
+    phaseRaw,
+    stakedMemberCount,
   ] = await client.multicall({
     contracts: [
       { ...base, functionName: 'getMembers' },
@@ -82,6 +110,10 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
       { ...base, functionName: 'roundContribution' },
       { ...base, functionName: 'currentRound' },
       { ...base, functionName: 'nextClaimAt' },
+      { ...base, functionName: 'cycleRounds' },
+      { ...base, functionName: 'stakeAmount' },
+      { ...base, functionName: 'phase' },
+      { ...base, functionName: 'stakedMemberCount' },
     ],
     allowFailure: false,
   });
@@ -89,7 +121,15 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
   const members = [...membersRaw] as Address[];
   const proposalIds = Array.from({ length: Number(proposalCount) }, (_, i) => BigInt(i));
 
-  const [depositsArr, rawProposalsArr, potBalance] = await Promise.all([
+  const stakeReadable = Boolean(tontineMode) && (stakeAmount as bigint) > 0n;
+
+  const [
+    depositsArr,
+    rawProposalsArr,
+    potBalance,
+    stakedArr,
+    hasStakedArr,
+  ] = await Promise.all([
     members.length > 0
       ? client.multicall({
           contracts: members.map((m) => ({
@@ -116,6 +156,26 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
       functionName: 'balanceOf',
       args: [governance, potTokenId],
     }),
+    stakeReadable && members.length > 0
+      ? client.multicall({
+          contracts: members.map((m) => ({
+            ...base,
+            functionName: 'staked' as const,
+            args: [m] as const,
+          })),
+          allowFailure: false,
+        })
+      : Promise.resolve([] as bigint[]),
+    stakeReadable && members.length > 0
+      ? client.multicall({
+          contracts: members.map((m) => ({
+            ...base,
+            functionName: 'hasStaked' as const,
+            args: [m] as const,
+          })),
+          allowFailure: false,
+        })
+      : Promise.resolve([] as boolean[]),
   ]);
 
   const deposits: Record<string, bigint> = {};
@@ -138,16 +198,36 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
 
   const tontineEnabled = Boolean(tontineMode);
   const contribution = (roundContribution as bigint) ?? 0n;
+  const stake = (stakeAmount as bigint) ?? 0n;
+
+  const staked: Record<string, bigint> = {};
+  const hasStaked: Record<string, boolean> = {};
+  if (stakeReadable) {
+    members.forEach((m, i) => {
+      staked[m.toLowerCase()] = (stakedArr[i] as bigint | undefined) ?? 0n;
+      hasStaked[m.toLowerCase()] = Boolean(hasStakedArr[i]);
+    });
+  }
+
+  const phaseNum = Number(phaseRaw);
+  const phase: KittyPhase = phaseNum === 0 ? 'setup' : phaseNum === 2 ? 'complete' : 'active';
+
   const tontine: TontineState = {
     enabled: tontineEnabled,
     roundDuration: Number(roundDuration),
     roundContribution: contribution,
     currentRound: Number(currentRound),
+    cycleRounds: Number(cycleRounds),
     nextClaimAt: Number(nextClaimAt),
     currentClaimer: tontineEnabled
       ? (members[Number(currentRound) % members.length] ?? ZERO_ADDRESS)
       : ZERO_ADDRESS,
     roundPayout: tontineEnabled ? contribution * BigInt(members.length) : 0n,
+    stakeAmount: stake,
+    phase,
+    stakedMemberCount: Number(stakedMemberCount),
+    staked,
+    hasStaked,
   };
 
   return {

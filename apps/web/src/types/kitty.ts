@@ -31,6 +31,10 @@ export interface KittyRef {
   roundContribution?: string;
   /// Round length in seconds when mode='tontine'.
   roundDuration?: number;
+  /// Total rounds in a full cycle when mode='tontine'.
+  cycleRounds?: number;
+  /// Per-member penalty stake (raw uint128 as decimal string). 0 = no stake.
+  stakeAmount?: string;
 }
 
 export interface ProposalView {

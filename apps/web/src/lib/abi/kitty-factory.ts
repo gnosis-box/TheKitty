@@ -36,6 +36,8 @@ export const kittyFactoryAbi = [
               { name: 'roundDuration', type: 'uint32' },
               { name: 'roundContribution', type: 'uint128' },
               { name: 'firstClaimAt', type: 'uint32' },
+              { name: 'cycleRounds', type: 'uint32' },
+              { name: 'stakeAmount', type: 'uint128' },
             ],
           },
         ],

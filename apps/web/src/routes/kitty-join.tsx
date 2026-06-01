@@ -65,6 +65,8 @@ export default function KittyJoinRoute() {
           ? {
               roundContribution: state.tontine.roundContribution.toString(),
               roundDuration: state.tontine.roundDuration,
+              cycleRounds: state.tontine.cycleRounds,
+              stakeAmount: state.tontine.stakeAmount.toString(),
             }
           : {}),
       };
