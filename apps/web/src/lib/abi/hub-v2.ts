@@ -56,4 +56,14 @@ export const hubV2Abi = [
     ],
     outputs: [],
   },
+  {
+    type: 'function',
+    name: 'isTrusted',
+    stateMutability: 'view',
+    inputs: [
+      { name: '_truster', type: 'address' },
+      { name: '_trustee', type: 'address' },
+    ],
+    outputs: [{ type: 'bool' }],
+  },
 ] as const;

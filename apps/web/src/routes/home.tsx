@@ -7,9 +7,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { KittyCard } from '@/components/pot/KittyCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { InviterBanner } from '@/components/pot/InviterBanner';
+import { PublicStats } from '@/components/pot/PublicStats';
 import { InviteButton } from '@/components/InviteButton';
 import { Logo } from '@/components/Logo';
+import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { useWallet } from '@/hooks/use-wallet';
+import { readTrustedCount } from '@/lib/kitty-reader';
 import { loadKitties } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
 
@@ -25,6 +28,31 @@ export default function HomeRoute() {
     setKitties(loadKitties(address));
   }, [address]);
 
+  // For each kitty card, compute how many members the viewer already trusts.
+  // Surfaced as a small "X in your trust graph" hint to make the trust graph
+  // membership of the kitty legible at a glance.
+  const [trustCounts, setTrustCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!address || kitties.length === 0) {
+      setTrustCounts({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        kitties.map(async (k) => {
+          const count = await readTrustedCount(address, k.members);
+          return [k.governance.toLowerCase(), count] as const;
+        }),
+      );
+      if (cancelled) return;
+      setTrustCounts(Object.fromEntries(entries));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, kitties]);
+
   // Pick the header copy based on what the user actually has. If they only
   // have tontines (or none yet), the tontine framing is correct. If they
   // have any free-pot kitties too, fall back to the broader "kitties" label.
@@ -33,14 +61,14 @@ export default function HomeRoute() {
     if (hasFree) {
       return {
         headerTitle: 'Your kitties',
-        headerSubtitle: 'Rotating tontines + free group pots, on Circles.',
+        headerSubtitle: 'Pool. Vote. Pay. — or rotate the pot, on Circles.',
         emptyCopy:
           'No kitties yet. Start a rotating tontine, or a free-form group pot.',
       };
     }
     return {
       headerTitle: 'Your tontines',
-      headerSubtitle: 'On-chain rotating savings, no organizer needed.',
+      headerSubtitle: 'Start a tontine. Chip in each round. Take your turn.',
       emptyCopy:
         'No tontines yet. Gather 2+ Circles humans you trust, set a contribution and a round length, and the rotation runs itself — no organizer holds the pot.',
     };
@@ -65,8 +93,10 @@ export default function HomeRoute() {
               <InviteButton variant="pill" />
               <MemberAvatar address={address} size="sm" />
             </>
+          ) : isMiniappHost ? (
+            <Badge tone="neutral">Waiting…</Badge>
           ) : (
-            <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
+            <OpenInPlayground />
           )}
         </div>
       </header>
@@ -88,13 +118,18 @@ export default function HomeRoute() {
         </Link>
       </div>
 
+      <PublicStats />
+
       {!isConnected && (
         <Card>
           <CardContent>
             <p className="text-sm text-[var(--color-muted)]">
-              Open this mini-app inside the Circles host to see your kitties — the host wallet
-              injects your Safe address.
+              The Kitty needs the Circles host to inject your Safe wallet — open this URL inside
+              the official playground to start.
             </p>
+            <div className="mt-3">
+              <OpenInPlayground />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -110,7 +145,11 @@ export default function HomeRoute() {
       {kitties.length > 0 && (
         <section className="flex flex-col gap-3">
           {kitties.map((k) => (
-            <KittyCard key={k.governance} kitty={k} />
+            <KittyCard
+              key={k.governance}
+              kitty={k}
+              trustedCount={trustCounts[k.governance.toLowerCase()]}
+            />
           ))}
         </section>
       )}
