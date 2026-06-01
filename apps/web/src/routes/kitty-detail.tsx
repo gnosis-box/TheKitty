@@ -21,6 +21,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { ProposalCard } from '@/components/pot/ProposalCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { HistoryList } from '@/components/pot/HistoryList';
+import { InviteButton } from '@/components/InviteButton';
 import { useHistory } from '@/hooks/use-history';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
@@ -79,18 +80,21 @@ export default function KittyDetailRoute() {
             <h1 className="font-mono text-base">{shortAddress(governance)}</h1>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={refreshAll}
-          aria-label="Refresh"
-          className="px-2"
-          disabled={loading || historyLoading}
-        >
-          <RefreshCw
-            className={loading || historyLoading ? 'size-4 animate-spin' : 'size-4'}
-          />
-        </Button>
+        <div className="flex items-center gap-1">
+          <InviteButton variant="pill" joinKitty={governance} label="Invite to this kitty" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refreshAll}
+            aria-label="Refresh"
+            className="px-2"
+            disabled={loading || historyLoading}
+          >
+            <RefreshCw
+              className={loading || historyLoading ? 'size-4 animate-spin' : 'size-4'}
+            />
+          </Button>
+        </div>
       </header>
 
       {error && (

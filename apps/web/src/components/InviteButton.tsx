@@ -5,15 +5,19 @@ import { Share2, Check, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { buildInviteLinks } from '@/lib/inviter';
 import { useWallet } from '@/hooks/use-wallet';
+import type { Address } from '@/types/kitty';
 
 interface Props {
   /// Visual variant: pill button (default) or full-width primary CTA.
   variant?: 'primary' | 'pill' | 'ghost';
   /// Label override.
   label?: string;
+  /// When set, the invite link points at `/kitty/<gov>/join` so the
+  /// recipient lands directly on the 1-signature opt-in flow.
+  joinKitty?: Address;
 }
 
-export function InviteButton({ variant = 'pill', label = 'Invite a friend' }: Props) {
+export function InviteButton({ variant = 'pill', label = 'Invite a friend', joinKitty }: Props) {
   const { address } = useWallet();
   const [justCopied, setJustCopied] = useState(false);
 
@@ -21,7 +25,7 @@ export function InviteButton({ variant = 'pill', label = 'Invite a friend' }: Pr
 
   async function handleShare() {
     if (!address) return;
-    const { playground } = buildInviteLinks(address, window.location.origin);
+    const { playground } = buildInviteLinks(address, window.location.origin, { joinKitty });
 
     // 1. Native share sheet (best on mobile).
     if (typeof navigator !== 'undefined' && navigator.share) {
