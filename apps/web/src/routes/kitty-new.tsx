@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { InviteButton } from '@/components/InviteButton';
+import { InviteLinkField } from '@/components/InviteLinkField';
 import { Label } from '@/components/ui/label';
 import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
@@ -259,6 +260,7 @@ export default function KittyNewRoute() {
           </CardHeader>
           <CardContent>
             <InviteButton variant="primary" label="Invite a friend" />
+            <InviteLinkField />
             <div className="flex flex-col gap-2">
               {form.memberInputs.map((value, idx) => {
                 const isSelf = address && value.toLowerCase() === address.toLowerCase();
