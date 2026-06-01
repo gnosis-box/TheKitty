@@ -1,5 +1,7 @@
 export type Address = `0x${string}`;
 
+export type KittyMode = 'tontine' | 'free';
+
 export interface KittyRef {
   /// Address of the deployed KittyGovernance contract.
   governance: Address;
@@ -21,6 +23,14 @@ export interface KittyRef {
   createdAt: number;
   /// Chain id (100 = Gnosis mainnet / sandbox).
   chainId: number;
+  /// Whether the kitty was created in rotating-savings mode. Optional for
+  /// backward compat with entries saved before this field existed — those
+  /// default to 'free' (the only mode that existed back then).
+  mode?: KittyMode;
+  /// Per-member contribution (raw uint128 as decimal string) when mode='tontine'.
+  roundContribution?: string;
+  /// Round length in seconds when mode='tontine'.
+  roundDuration?: number;
 }
 
 export interface ProposalView {

@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { isAddress, parseUnits } from 'viem';
 import { ArrowDown, ArrowLeft, ArrowUp, Plus, X } from 'lucide-react';
@@ -16,9 +16,7 @@ import { saveKitty } from '@/lib/storage';
 import { buildCreateKittyTx, type TontineInput } from '@/lib/tx-builders';
 import { shortAddress } from '@/lib/utils';
 import { waitForKittyCreated } from '@/lib/wait-for-kitty';
-import type { Address, KittyRef } from '@/types/kitty';
-
-type KittyMode = 'free' | 'tontine';
+import type { Address, KittyMode, KittyRef } from '@/types/kitty';
 
 interface FormState {
   name: string;
@@ -49,6 +47,7 @@ const DEFAULTS: FormState = {
 export default function KittyNewRoute() {
   const { address, isConnected, sendTransactions } = useWallet();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [form, setForm] = useState<FormState>(() => {
     const inviter = getInviter();
@@ -58,7 +57,9 @@ export default function KittyNewRoute() {
       seed.push(inviter);
     }
     while (seed.length < 3) seed.push('');
-    return { ...DEFAULTS, memberInputs: seed };
+    const queryMode = searchParams.get('mode');
+    const mode: KittyMode = queryMode === 'free' ? 'free' : 'tontine';
+    return { ...DEFAULTS, memberInputs: seed, mode };
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -145,6 +146,13 @@ export default function KittyNewRoute() {
         votingPeriod: validation.votingPeriodSeconds,
         createdAt: Math.floor(Date.now() / 1000),
         chainId: CIRCLES_CONFIG.chainId,
+        mode: form.mode,
+        ...(form.mode === 'tontine' && validation.tontine.enabled
+          ? {
+              roundContribution: validation.tontine.roundContribution.toString(),
+              roundDuration: validation.tontine.roundDurationSeconds,
+            }
+          : {}),
       };
       saveKitty(address, ref);
 

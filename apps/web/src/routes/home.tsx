@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { RotateCw, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,6 +25,27 @@ export default function HomeRoute() {
     setKitties(loadKitties(address));
   }, [address]);
 
+  // Pick the header copy based on what the user actually has. If they only
+  // have tontines (or none yet), the tontine framing is correct. If they
+  // have any free-pot kitties too, fall back to the broader "kitties" label.
+  const { headerTitle, headerSubtitle, emptyCopy } = useMemo(() => {
+    const hasFree = kitties.some((k) => (k.mode ?? 'free') === 'free');
+    if (hasFree) {
+      return {
+        headerTitle: 'Your kitties',
+        headerSubtitle: 'Rotating tontines + free group pots, on Circles.',
+        emptyCopy:
+          'No kitties yet. Start a rotating tontine, or a free-form group pot.',
+      };
+    }
+    return {
+      headerTitle: 'Your tontines',
+      headerSubtitle: 'On-chain rotating savings, no organizer needed.',
+      emptyCopy:
+        'No tontines yet. Gather 2+ Circles humans you trust, set a contribution and a round length, and the rotation runs itself — no organizer holds the pot.',
+    };
+  }, [kitties]);
+
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
       <header className="flex items-start justify-between">
@@ -34,10 +55,8 @@ export default function HomeRoute() {
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
               The Kitty
             </p>
-            <h1 className="text-2xl font-semibold leading-tight">Your tontines</h1>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">
-              On-chain rotating savings, no organizer needed.
-            </p>
+            <h1 className="text-2xl font-semibold leading-tight">{headerTitle}</h1>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">{headerSubtitle}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -54,12 +73,20 @@ export default function HomeRoute() {
 
       <InviterBanner selfAddress={address} />
 
-      <Link
-        to="/kitty/new"
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_10px_28px_-12px_var(--color-shadow)] hover:brightness-110"
-      >
-        <Plus className="size-4" /> Start a tontine
-      </Link>
+      <div className="flex flex-col gap-2">
+        <Link
+          to="/kitty/new?mode=tontine"
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_10px_28px_-12px_var(--color-shadow)] hover:brightness-110"
+        >
+          <RotateCw className="size-4" /> Start a tontine
+        </Link>
+        <Link
+          to="/kitty/new?mode=free"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] text-sm text-[var(--color-text)] hover:bg-[var(--color-border)]"
+        >
+          <Users className="size-3.5" /> Or a group pot
+        </Link>
+      </div>
 
       {!isConnected && (
         <Card>
@@ -75,10 +102,7 @@ export default function HomeRoute() {
       {isConnected && kitties.length === 0 && (
         <Card>
           <CardContent>
-            <p className="text-sm text-[var(--color-muted)]">
-              No tontines yet. Gather 2+ Circles humans you trust, set a contribution and a
-              round length, and the rotation runs itself — no organizer holds the pot.
-            </p>
+            <p className="text-sm text-[var(--color-muted)]">{emptyCopy}</p>
           </CardContent>
         </Card>
       )}
