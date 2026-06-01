@@ -93,10 +93,8 @@ export default function HomeRoute() {
               <InviteButton variant="pill" />
               <MemberAvatar address={address} size="sm" />
             </>
-          ) : isMiniappHost ? (
-            <Badge tone="neutral">Waiting…</Badge>
           ) : (
-            <OpenInPlayground />
+            <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
           )}
         </div>
       </header>
