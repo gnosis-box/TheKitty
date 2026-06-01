@@ -181,9 +181,11 @@ export default function KittyNewRoute() {
         </Button>
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-            New kitty
+            {form.mode === 'tontine' ? 'New tontine' : 'New group pot'}
           </p>
-          <h1 className="text-2xl font-semibold">Start a tontine</h1>
+          <h1 className="text-2xl font-semibold">
+            {form.mode === 'tontine' ? 'Start a tontine' : 'Set up a group pot'}
+          </h1>
         </div>
       </header>
 
@@ -229,29 +231,6 @@ export default function KittyNewRoute() {
                 }
                 placeholder="FLAT"
                 required
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Mode</CardTitle>
-            <CardDescription>How the pot flows.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2">
-              <ModeOption
-                label="Rotating tontine"
-                helper="Each member claims the pot in turn (ROSCA)."
-                active={form.mode === 'tontine'}
-                onClick={() => setField('mode', 'tontine')}
-              />
-              <ModeOption
-                label="Free pot"
-                helper="Anyone can propose a spend. Quorum decides."
-                active={form.mode === 'free'}
-                onClick={() => setField('mode', 'free')}
               />
             </div>
           </CardContent>
@@ -345,49 +324,51 @@ export default function KittyNewRoute() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Governance</CardTitle>
-            <CardDescription>How the kitty spends.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="quorum">Quorum · % of members</Label>
-              <Input
-                id="quorum"
-                type="number"
-                min={1}
-                max={100}
-                value={form.quorum}
-                onChange={(e) => setField('quorum', e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="threshold">Small spend cap · CRC (no vote below this)</Label>
-              <Input
-                id="threshold"
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.smallThresholdCrc}
-                onChange={(e) => setField('smallThresholdCrc', e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="period">Voting period · hours</Label>
-              <Input
-                id="period"
-                type="number"
-                min={1}
-                value={form.votingHours}
-                onChange={(e) => setField('votingHours', e.target.value)}
-                required
-              />
-            </div>
-          </CardContent>
-        </Card>
+        {form.mode === 'free' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Governance</CardTitle>
+              <CardDescription>How the pot spends.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="quorum">Quorum · % of members</Label>
+                <Input
+                  id="quorum"
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={form.quorum}
+                  onChange={(e) => setField('quorum', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="threshold">Small spend cap · CRC (no vote below this)</Label>
+                <Input
+                  id="threshold"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.smallThresholdCrc}
+                  onChange={(e) => setField('smallThresholdCrc', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="period">Voting period · hours</Label>
+                <Input
+                  id="period"
+                  type="number"
+                  min={1}
+                  value={form.votingHours}
+                  onChange={(e) => setField('votingHours', e.target.value)}
+                  required
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {form.mode === 'tontine' && (
           <Card>
@@ -450,7 +431,11 @@ export default function KittyNewRoute() {
           size="lg"
           disabled={!isConnected || !validation.ok || !factoryReady || submitting}
         >
-          {submitting ? 'Creating…' : 'Create kitty'}
+          {submitting
+            ? 'Creating…'
+            : form.mode === 'tontine'
+            ? 'Start the tontine'
+            : 'Create the group pot'}
         </Button>
 
         {!isConnected ? (
@@ -572,29 +557,4 @@ function validate(form: FormState, _self: Address | null): Validation {
   }
 
   return { ok: true, members, quorum, smallThreshold, votingPeriodSeconds, tontine };
-}
-
-interface ModeOptionProps {
-  label: string;
-  helper: string;
-  active: boolean;
-  onClick: () => void;
-}
-
-function ModeOption({ label, helper, active, onClick }: ModeOptionProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        'flex flex-col gap-1 rounded-[var(--radius-card)] border p-3 text-left transition ' +
-        (active
-          ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
-          : 'border-[var(--color-border)] hover:border-[var(--color-accent)]/60')
-      }
-    >
-      <span className="text-sm font-semibold">{label}</span>
-      <span className="text-xs text-[var(--color-muted)]">{helper}</span>
-    </button>
-  );
 }
