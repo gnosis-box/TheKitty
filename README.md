@@ -21,14 +21,11 @@
 
 ## What it is
 
-**The Kitty turns a group of Circles humans into a small treasury: every member contributes CRC, the rules (rotation, votes, spend caps) are public and enforced by the smart contract, and the money never sits in a single trésorier's hands.**
+**The Kitty is on-chain tontines for Circles communities. Members contribute CRC each round, the smart contract pays the whole pot to one member at a time, and the rotation runs itself — no organizer holds the money, no organizer can run off with it.**
 
-A Circles V2 mini-app for two patterns of group money:
+It's the model behind tandas, sou-sou, hui, and tontines — used by hundreds of millions of people globally — rewritten as a Circles V2 mini-app: a real BaseGroup avatar plus a governance contract that enforces the rotation deterministically by member index.
 
-- **Rotating tontine (ROSCA)** — every member contributes the same amount each round; one member at a time takes the whole pot. The cycle rotates on-chain, no organizer can run off with the funds. The model behind tandas, sou-sou, hui, and tontines used by hundreds of millions of people globally.
-- **Free pot** — a shared treasury with a small-spend cap (any member can pay below it) and a quorum vote for larger expenses. For neighbourhood solidarity funds, collective bills, travel pools, or anything a group budgets together.
-
-In both modes the kitty is a real Circles V2 BaseGroup with a custom governance contract — it lives in the trust graph, not on a single platform.
+A second mode (**free pot**) is available for groups that want a shared treasury with a small-spend cap + quorum vote instead of a rotation — useful for travel pools, neighbourhood solidarity funds, or collective bills. Same contract, same primitives, different payout rule.
 
 ## How it works
 
