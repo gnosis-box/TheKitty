@@ -47,7 +47,7 @@ export async function waitForKittyCreated(
         topics: log.topics,
         data: log.data,
       });
-      const args = parsed.args as {
+      const args = parsed.args as Partial<{
         creator: Address;
         baseGroup: Address;
         governance: Address;
@@ -55,15 +55,20 @@ export async function waitForKittyCreated(
         quorumPercent: number;
         smallTxThreshold: bigint;
         votingPeriod: number;
-      };
+      }>;
+      if (!args.governance || !args.baseGroup || !args.creator) {
+        throw new Error(
+          'KittyCreated event decoded but is missing core fields — ABI / contract mismatch?',
+        );
+      }
       return {
         creator: args.creator,
         baseGroup: args.baseGroup,
         governance: args.governance,
-        members: args.members,
-        quorumPercent: args.quorumPercent,
-        smallTxThreshold: args.smallTxThreshold,
-        votingPeriod: args.votingPeriod,
+        members: args.members ?? [],
+        quorumPercent: args.quorumPercent ?? 0,
+        smallTxThreshold: args.smallTxThreshold ?? 0n,
+        votingPeriod: args.votingPeriod ?? 0,
       };
     } catch {
       // Not the KittyCreated event — keep scanning.

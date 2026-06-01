@@ -130,15 +130,19 @@ export default function KittyNewRoute() {
       toast.loading('Waiting for confirmation…', { id: 'create-kitty' });
       const created = await waitForKittyCreated(txHash as `0x${string}`);
 
+      // Use the values we actually submitted for the local cache. The on-chain
+      // event decode is only load-bearing for `governance` / `baseGroup` (which
+      // are addresses we couldn't predict client-side) — the rest is what the
+      // form passed in.
       const ref: KittyRef = {
         governance: created.governance,
         groupAvatar: created.baseGroup,
         name: form.name.trim(),
         symbol: form.symbol.trim().toUpperCase(),
         members: validation.members,
-        quorumPercent: created.quorumPercent,
-        smallTxThreshold: created.smallTxThreshold.toString(),
-        votingPeriod: created.votingPeriod,
+        quorumPercent: validation.quorum,
+        smallTxThreshold: validation.smallThreshold.toString(),
+        votingPeriod: validation.votingPeriodSeconds,
         createdAt: Math.floor(Date.now() / 1000),
         chainId: CIRCLES_CONFIG.chainId,
       };
