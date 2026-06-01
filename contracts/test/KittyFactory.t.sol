@@ -107,7 +107,9 @@ contract KittyFactoryTest is Test {
                 enabled: false,
                 roundDuration: 0,
                 roundContribution: 0,
-                firstClaimAt: 0
+                firstClaimAt: 0,
+                cycleRounds: 0,
+                stakeAmount: 0
             })
         });
     }
@@ -118,7 +120,9 @@ contract KittyFactoryTest is Test {
             enabled: true,
             roundDuration: 30 days,
             roundContribution: 50e18,
-            firstClaimAt: uint32(block.timestamp + 30 days)
+            firstClaimAt: uint32(block.timestamp + 30 days),
+            cycleRounds: 3,
+            stakeAmount: 0
         });
     }
 
@@ -210,5 +214,19 @@ contract KittyFactoryTest is Test {
         assertEq(gov.currentRound(), 0);
         // First claimer is the first listed member (alice).
         assertEq(gov.currentClaimer(), alice);
+    }
+
+    function test_createStakeTontineKitty_endToEnd() public {
+        KittyFactory.KittyArgs memory k = _tontineKittyArgs();
+        k.tontine.stakeAmount = 20e18;
+        vm.prank(creator);
+        (, address governance) = factory.createKitty(_groupArgs(), k);
+
+        KittyGovernance gov = KittyGovernance(governance);
+        assertTrue(gov.tontineMode());
+        assertEq(gov.stakeAmount(), 20e18);
+        // Stake-enabled kitties start in Setup, not Active.
+        assertEq(uint8(gov.phase()), uint8(KittyGovernance.Phase.Setup));
+        assertEq(gov.stakedMemberCount(), 0);
     }
 }

@@ -144,7 +144,7 @@ export default function KittyDepositRoute() {
             </Button>
             {!isConnected && (
               <p className="text-center text-xs text-[var(--color-muted)]">
-                Open inside the Circles playground to sign with your Safe.
+                Open inside the Circles playground to sign with your Circles wallet.
               </p>
             )}
             {isConnected && address && (

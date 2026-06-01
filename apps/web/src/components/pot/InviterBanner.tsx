@@ -29,7 +29,7 @@ export function InviterBanner({ selfAddress }: { selfAddress?: Address | null })
 
   async function shareAddressBack() {
     if (!selfAddress) return;
-    const message = `My Circles Safe address for the kitty: ${selfAddress}`;
+    const message = `My Circles address for the kitty: ${selfAddress}`;
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({ text: message });
@@ -58,7 +58,7 @@ export function InviterBanner({ selfAddress }: { selfAddress?: Address | null })
         <div className="flex-1 text-sm">
           <p className="font-medium">invited you to The Kitty.</p>
           <p className="text-xs text-[var(--color-muted)]">
-            They need your Safe address to add you as a member.
+            They need your Circles address to add you as a member.
           </p>
         </div>
         <button

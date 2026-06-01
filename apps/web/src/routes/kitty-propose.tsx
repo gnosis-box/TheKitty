@@ -111,7 +111,7 @@ export default function KittyProposeRoute() {
         <Card>
           <CardHeader>
             <CardTitle>Recipient</CardTitle>
-            <CardDescription>The Safe address paying for the goods.</CardDescription>
+            <CardDescription>The Circles address receiving the payment.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-1.5">
@@ -186,7 +186,7 @@ export default function KittyProposeRoute() {
 
         {!isConnected ? (
           <p className="text-center text-xs text-[var(--color-muted)]">
-            Open inside the Circles playground to sign with your Safe.
+            Open inside the Circles playground to sign with your Circles wallet.
           </p>
         ) : address ? (
           <p className="text-center text-xs text-[var(--color-muted)]">
