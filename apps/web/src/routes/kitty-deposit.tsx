@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useKitty } from '@/hooks/use-kitty';
 import { useWallet } from '@/hooks/use-wallet';
 import { readPersonalCrcBalance } from '@/lib/kitty-reader';
@@ -110,11 +111,16 @@ export default function KittyDepositRoute() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {address && personalCrc !== null && (
+          {address && personalCrc !== null ? (
             <p className="text-xs text-[var(--color-muted)]">
               Your personal CRC: <strong>{formatCrc(personalCrc)}</strong>
             </p>
-          )}
+          ) : address ? (
+            <p className="text-xs text-[var(--color-muted)]">
+              Your personal CRC:{' '}
+              <Skeleton className="ml-1 inline-block h-3 w-12 align-middle" />
+            </p>
+          ) : null}
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="amount">Amount · CRC</Label>

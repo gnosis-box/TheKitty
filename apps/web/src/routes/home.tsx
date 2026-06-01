@@ -8,6 +8,7 @@ import { KittyCard } from '@/components/pot/KittyCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { InviterBanner } from '@/components/pot/InviterBanner';
 import { InviteButton } from '@/components/InviteButton';
+import { Logo } from '@/components/Logo';
 import { useWallet } from '@/hooks/use-wallet';
 import { loadKitties } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
@@ -27,12 +28,15 @@ export default function HomeRoute() {
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
       <header className="flex items-start justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-            The Kitty
-          </p>
-          <h1 className="text-2xl font-semibold">Your group pots</h1>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">Chip in. Cash out together.</p>
+        <div className="flex items-start gap-3">
+          <Logo size={42} className="mt-1" />
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              The Kitty
+            </p>
+            <h1 className="text-2xl font-semibold leading-tight">Your group pots</h1>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">Chip in. Cash out together.</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {isConnected && address ? (

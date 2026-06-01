@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, PiggyBank, Send, Sparkles, RefreshCw } from 'l
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs } from '@/components/ui/tabs';
 import { ProposalCard } from '@/components/pot/ProposalCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
@@ -210,6 +211,8 @@ export default function KittyDetailRoute() {
         </>
       )}
 
+      {!state && loading && !error && <KittyDetailSkeleton />}
+
       {!state && !loading && !error && (
         <Card>
           <CardContent>
@@ -220,6 +223,44 @@ export default function KittyDetailRoute() {
         </Card>
       )}
     </main>
+  );
+}
+
+function KittyDetailSkeleton() {
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="mt-2 h-3 w-56" />
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 rounded-lg" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+      <div className="grid grid-cols-2 gap-3">
+        <Skeleton className="h-12 rounded-xl" />
+        <Skeleton className="h-12 rounded-xl" />
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+        </CardHeader>
+        <CardContent>
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2">
+              <Skeleton className="size-7 rounded-full" />
+              <Skeleton className="h-3 flex-1" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
