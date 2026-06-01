@@ -111,7 +111,7 @@ export default function KittyDetailRoute() {
               <CardDescription>
                 {state.tontine.enabled
                   ? 'Rotating savings pool (ROSCA). Each round one member claims the full pot.'
-                  : 'Pot tokens custodied by the governance contract.'}
+                  : 'Shared pool custodied by the governance contract.'}
               </CardDescription>
             </CardHeader>
             <CardContent>

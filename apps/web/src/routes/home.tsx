@@ -35,7 +35,9 @@ export default function HomeRoute() {
               The Kitty
             </p>
             <h1 className="text-2xl font-semibold leading-tight">Your group pots</h1>
-            <p className="mt-1 text-sm text-[var(--color-muted)]">Chip in. Cash out together.</p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
+              Programmable mutual aid for Circles communities.
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -74,7 +76,8 @@ export default function HomeRoute() {
         <Card>
           <CardContent>
             <p className="text-sm text-[var(--color-muted)]">
-              No kitties yet. Create one with two or more friends to start pooling CRC.
+              No kitties yet. Start a rotating tontine or a free pot with 2+ Circles humans
+              you already trust.
             </p>
           </CardContent>
         </Card>

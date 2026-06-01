@@ -1,6 +1,6 @@
 # The Kitty
 
-> **Chip in. Cash out together.** A shared on-chain pot for groups, on Circles V2.
+> **Programmable mutual aid for Circles communities.** A shared on-chain pot with rules in code, on Gnosis Chain.
 
 <table>
   <tr>
@@ -21,18 +21,23 @@
 
 ## What it is
 
-**Tricount tells you who owes who. Lydia holds the money for you if you trust the platform. The Kitty is an automatic shared vault: the rules (votes, spend caps) are public and enforced by code, and the money works for you as long as it keeps moving.**
+**The Kitty turns a group of Circles humans into a small treasury: every member contributes CRC, the rules (rotation, votes, spend caps) are public and enforced by the smart contract, and the money never sits in a single trésorier's hands.**
 
-It's a Circles V2 mini-app for housemates, families, travel groups, or any small collective who wants to pool funds and spend them together — without the "settle up later" friction of a tracker app, and without the centralized custody of a fintech cagnotte.
+A Circles V2 mini-app for two patterns of group money:
+
+- **Rotating tontine (ROSCA)** — every member contributes the same amount each round; one member at a time takes the whole pot. The cycle rotates on-chain, no organizer can run off with the funds. The model behind tandas, sou-sou, hui, and tontines used by hundreds of millions of people globally.
+- **Free pot** — a shared treasury with a small-spend cap (any member can pay below it) and a quorum vote for larger expenses. For neighbourhood solidarity funds, collective bills, travel pools, or anything a group budgets together.
+
+In both modes the kitty is a real Circles V2 BaseGroup with a custom governance contract — it lives in the trust graph, not on a single platform.
 
 ## How it works
 
-1. **Create a kitty** with 2+ Circles members, a quorum (e.g. 51%), and a small-spend cap (e.g. 5 CRC under which any member can spend without a vote).
-2. **Deposit personal CRC**: each member's contribution turns into pot tokens held by the governance contract.
-3. **Spend**:
-   - Below the cap → any member pays directly. No vote.
-   - Above the cap → any member proposes, others approve. Once quorum is reached, the spend executes.
-4. **Anti-decay**: Circles' demurrage costs idle CRC ~7%/yr. A kitty that keeps the money in motion preserves value that a sleeping wallet would lose.
+1. **Create a kitty** with 2+ Circles members. Pick *rotating tontine* (set round length + per-member contribution) or *free pot* (set quorum + small-spend cap).
+2. **Deposit CRC**: each member commits their share; deposits are tracked on-chain per address.
+3. **Pay out**:
+   - *Tontine*: when a round opens, the current member calls `claimRound` and receives the full pot. Rotation advances by one.
+   - *Free pot*: under the cap → any member pays direct, no vote. Over the cap → propose → approve → execute once quorum is met.
+4. **Aligned with Circles demurrage**: idle CRC loses ~7%/yr by design — a kitty keeps the money moving, which is precisely how a Freigeld-style currency is meant to behave.
 
 <table>
   <tr>
@@ -49,10 +54,10 @@ It's a Circles V2 mini-app for housemates, families, travel groups, or any small
 
 ## Why on-chain
 
-- **Real custody, not bookkeeping.** The pot exists; it's not a tab to settle later.
-- **Rules in code.** No admin can drain the pot. Votes and caps are enforced by `KittyGovernance`.
-- **Auditable.** Every spend is a transaction on Gnosis Chain.
-- **Uses CRC (Circles UBI).** Every registered human earns CRC daily just for existing — you pool money that was free to acquire.
+- **No trésorier.** No member holds the pool on behalf of the others. The contract is the custodian; the rules of payout are public Solidity, not a Telegram agreement.
+- **Anti-rug ROSCA.** The historical failure mode of tontines is the organizer disappearing with the round. With `claimRound` deterministic by member index, the rotation can't be subverted by whoever happens to manage the group chat.
+- **Auditable.** Every contribution and every payout is a transaction on Gnosis Chain. The dispute log is the chain itself.
+- **Built on Circles humans.** Members are Circles V2 verified humans linked by the trust graph — the same anti-sybil layer that backs CRC itself.
 
 ## Architecture
 
@@ -68,11 +73,11 @@ KittyFactory  ──── createKitty() ─────► BaseGroupFactory →
                                   ┌───────────────────────────┘
                                   ▼
                           KittyGovernance
-                              (custodial: holds pot tokens, runs propose / approve / execute)
+                              (custodian + governance + tontine rotation)
 ```
 
-- `KittyGovernance.sol` — pot custodian + voting. Members deposit by bundling `Hub.groupMint` + ERC-1155 transfer.
-- `KittyFactory.sol` — one-tx setup: creates the BaseGroup, trusts members, deploys governance, hands BaseGroup ownership back to the creator.
+- `KittyGovernance.sol` — pool custodian. Runs free-pot governance (`propose / approve / execute / smallSpend`) and, when `tontineMode` is enabled, the rotating `claimRound` payout. The two modes co-exist on the same contract.
+- `KittyFactory.sol` — one-tx setup: creates the BaseGroup, trusts members, deploys governance with the chosen mode + parameters, hands BaseGroup ownership back to the creator.
 
 ## Deployed (Gnosis Chain, chainId 100)
 
@@ -90,7 +95,7 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 
 - **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
 - **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
-- **Contracts** — Foundry, Solidity 0.8.24, 27 tests passing, Trail of Bits audit pass
+- **Contracts** — Foundry, Solidity 0.8.24, 61 tests passing. The free-pot core passed a Trail of Bits review; the tontine extension is post-audit and lives on top.
 - **Hosting** — Coolify (Docker + Caddy)
 
 ## Status
@@ -100,7 +105,8 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 - [x] Phase 2 — create-a-kitty UI (1 tx)
 - [x] Phase 3 — deposit, propose, approve, execute, small-spend
 - [x] Phase 4 — playful theme, Circles profile enrichment, history tab
-- [ ] V2 — tontine rotation, redeem, invite links, real demurrage delta
+- [x] Phase 5 — rotating tontine (`claimRound`, round calendar, current-claimer CTA)
+- [ ] V2 — redeem CRC, invite-to-join links, demurrage delta surfaced in UI
 
 ## License
 
