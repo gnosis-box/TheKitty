@@ -25,7 +25,8 @@ import { useHistory } from '@/hooks/use-history';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
 import { buildClaimRoundTx } from '@/lib/tx-builders';
-import type { TontineState } from '@/lib/kitty-reader';
+import { readPerMemberTrust, type TontineState } from '@/lib/kitty-reader';
+import { TrustChip } from '@/components/pot/TrustChip';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { Address, ProposalView } from '@/types/kitty';
 
@@ -46,9 +47,24 @@ export default function KittyDetailRoute() {
     return map;
   }, [state?.proposals]);
 
+  // Per-member trust map for the inline TrustChip in the Members section.
+  const [trustMap, setTrustMap] = useState<Record<string, boolean>>({});
+  const refreshTrust = useMemo(
+    () => async () => {
+      if (!address || !state) return;
+      const map = await readPerMemberTrust(address, state.members);
+      setTrustMap(map);
+    },
+    [address, state],
+  );
+  useEffect(() => {
+    void refreshTrust();
+  }, [refreshTrust]);
+
   function refreshAll() {
     void refresh();
     void refreshHistory();
+    void refreshTrust();
   }
 
   if (!id) {
@@ -174,19 +190,35 @@ export default function KittyDetailRoute() {
           <Card>
             <CardHeader>
               <CardTitle>Members & deposits</CardTitle>
+              <CardDescription>
+                Tap “Trust” to vouch for a member in the Circles trust graph — one signature, no
+                leaving the app.
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {state.members.map((m) => (
-                <div
-                  key={m}
-                  className="flex items-center gap-3 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2"
-                >
-                  <MemberAvatar address={m} size="sm" selfAddress={address} className="flex-1" />
-                  <span className="shrink-0 font-mono text-xs text-[var(--color-muted)]">
-                    {formatCrc(state.deposits[m.toLowerCase()] ?? 0n)} CRC
-                  </span>
-                </div>
-              ))}
+              {state.members.map((m) => {
+                const isSelf =
+                  address != null && m.toLowerCase() === address.toLowerCase();
+                return (
+                  <div
+                    key={m}
+                    className="flex items-center gap-3 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2"
+                  >
+                    <MemberAvatar address={m} size="sm" selfAddress={address} className="flex-1" />
+                    {address && (
+                      <TrustChip
+                        trustee={m}
+                        alreadyTrusted={trustMap[m.toLowerCase()] === true}
+                        isSelf={isSelf}
+                        onTrusted={refreshTrust}
+                      />
+                    )}
+                    <span className="shrink-0 font-mono text-xs text-[var(--color-muted)]">
+                      {formatCrc(state.deposits[m.toLowerCase()] ?? 0n)} CRC
+                    </span>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
 

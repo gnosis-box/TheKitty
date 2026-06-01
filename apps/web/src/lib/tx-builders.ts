@@ -197,16 +197,18 @@ export function buildExecuteTx(args: {
   };
 }
 
-/// Build the `Hub.trust(group, expiry)` tx a member signs to opt in to a
-/// kitty's group avatar. Needed before they can `groupMint` (deposit) into
-/// the pool. Using TRUST_EXPIRY_NEVER so the user only ever signs once.
-export function buildTrustGroupTx(args: { groupAvatar: Address }): MiniappTransaction {
+/// Build a `Hub.trust(trustee, expiry)` tx. The caller's Safe vouches for the
+/// trustee in the Circles V2 trust graph from now to `TRUST_EXPIRY_NEVER`.
+/// Used both for trusting a group avatar (so the member can deposit into the
+/// pool) and for trusting individual humans inline from the kitty detail
+/// page — same primitive either way.
+export function buildTrustTx(args: { trustee: Address }): MiniappTransaction {
   return {
     to: CIRCLES_CONFIG.v2HubAddress,
     data: encodeFunctionData({
       abi: hubV2Abi,
       functionName: 'trust',
-      args: [args.groupAvatar, TRUST_EXPIRY_NEVER],
+      args: [args.trustee, TRUST_EXPIRY_NEVER],
     }),
     value: '0',
   };

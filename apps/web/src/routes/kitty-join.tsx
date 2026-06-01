@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useKitty } from '@/hooks/use-kitty';
 import { useWallet } from '@/hooks/use-wallet';
-import { buildTrustGroupTx } from '@/lib/tx-builders';
+import { buildTrustTx } from '@/lib/tx-builders';
 import { shortAddress } from '@/lib/utils';
 import type { Address } from '@/types/kitty';
 
@@ -41,7 +41,7 @@ export default function KittyJoinRoute() {
     setSigning(true);
     try {
       toast.loading('Opening trust…', { id: 'kitty-join' });
-      const [txHash] = await sendTransactions([buildTrustGroupTx({ groupAvatar: state.groupAvatar })]);
+      const [txHash] = await sendTransactions([buildTrustTx({ trustee: state.groupAvatar })]);
       if (!txHash) throw new Error('Host returned no tx hash');
       toast.success("You're in ✓", { id: 'kitty-join' });
       navigate(`/kitty/${governance}`);
