@@ -197,6 +197,21 @@ export function buildExecuteTx(args: {
   };
 }
 
+/// Build the `Hub.trust(group, expiry)` tx a member signs to opt in to a
+/// kitty's group avatar. Needed before they can `groupMint` (deposit) into
+/// the pool. Using TRUST_EXPIRY_NEVER so the user only ever signs once.
+export function buildTrustGroupTx(args: { groupAvatar: Address }): MiniappTransaction {
+  return {
+    to: CIRCLES_CONFIG.v2HubAddress,
+    data: encodeFunctionData({
+      abi: hubV2Abi,
+      functionName: 'trust',
+      args: [args.groupAvatar, TRUST_EXPIRY_NEVER],
+    }),
+    value: '0',
+  };
+}
+
 /// Build a `claimRound` tx for tontine mode.
 export function buildClaimRoundTx(args: { governance: Address }): MiniappTransaction {
   return {

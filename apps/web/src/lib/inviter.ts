@@ -56,15 +56,24 @@ export function clearInviter(): void {
 /// Build a shareable link that, when opened inside the Circles playground,
 /// loads The Kitty with the current user tagged as the inviter.
 ///
-/// Two flavours:
+/// Three flavours:
 ///   - direct: `https://thekitty.gnosis.box/?via=0xabc…` — bookmark / standalone open
 ///   - playground: `https://circles.gnosis.io/playground?url=…` — wraps direct in
 ///     the official iframe host so the recipient gets the Circles UX immediately.
-export function buildInviteLinks(self: Address, appOrigin: string): {
+///   - when `joinKitty` is provided, the link points at `/kitty/<gov>/join` so
+///     the recipient lands on the 1-signature opt-in screen rather than the home.
+export function buildInviteLinks(
+  self: Address,
+  appOrigin: string,
+  opts?: { joinKitty?: Address },
+): {
   direct: string;
   playground: string;
 } {
   const url = new URL(appOrigin);
+  if (opts?.joinKitty) {
+    url.pathname = `/kitty/${opts.joinKitty}/join`;
+  }
   url.searchParams.set(QUERY_KEY, self);
   const direct = url.toString();
 
