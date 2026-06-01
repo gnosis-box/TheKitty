@@ -122,12 +122,21 @@ export default function KittyDetailRoute() {
                 <Stat label="Current pool" value={`${formatCrc(state.potBalance)} CRC`} />
                 <Stat label="Total deposited" value={`${formatCrc(state.totalDeposited)} CRC`} />
                 <Stat label="Members" value={String(state.members.length)} />
-                <Stat label="Quorum" value={`${state.quorumPercent}%`} />
-                <Stat label="Small cap" value={`${formatCrc(state.smallTxThreshold)} CRC`} />
-                <Stat
-                  label="Voting"
-                  value={`${Math.round(state.votingPeriod / 3600)}h`}
-                />
+                {state.tontine.enabled ? (
+                  <Stat
+                    label="Per round"
+                    value={`${formatCrc(state.tontine.roundContribution)} CRC`}
+                  />
+                ) : (
+                  <>
+                    <Stat label="Quorum" value={`${state.quorumPercent}%`} />
+                    <Stat label="Small cap" value={`${formatCrc(state.smallTxThreshold)} CRC`} />
+                    <Stat
+                      label="Voting"
+                      value={`${Math.round(state.votingPeriod / 3600)}h`}
+                    />
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -142,19 +151,24 @@ export default function KittyDetailRoute() {
             />
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div
+            className={state.tontine.enabled ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}
+          >
             <Link
               to={`/kitty/${governance}/deposit`}
               className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] hover:brightness-110"
             >
-              <PiggyBank className="size-4" /> Deposit
+              <PiggyBank className="size-4" />
+              {state.tontine.enabled ? 'Chip in this round' : 'Deposit'}
             </Link>
-            <Link
-              to={`/kitty/${governance}/propose`}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-surface-hi)] text-[var(--color-text)] hover:bg-[var(--color-border)]"
-            >
-              <Send className="size-4" /> Spend
-            </Link>
+            {!state.tontine.enabled && (
+              <Link
+                to={`/kitty/${governance}/propose`}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-surface-hi)] text-[var(--color-text)] hover:bg-[var(--color-border)]"
+              >
+                <Send className="size-4" /> Spend
+              </Link>
+            )}
           </div>
 
           <Card>
@@ -177,14 +191,18 @@ export default function KittyDetailRoute() {
           </Card>
 
           <Tabs
-            defaultValue="proposals"
-            options={[
-              {
-                value: 'proposals',
-                label: `Proposals (${state.proposals.filter((p) => !p.executed).length})`,
-              },
-              { value: 'history', label: `History (${history.length})` },
-            ]}
+            defaultValue={state.tontine.enabled ? 'history' : 'proposals'}
+            options={
+              state.tontine.enabled
+                ? [{ value: 'history', label: `History (${history.length})` }]
+                : [
+                    {
+                      value: 'proposals',
+                      label: `Proposals (${state.proposals.filter((p) => !p.executed).length})`,
+                    },
+                    { value: 'history', label: `History (${history.length})` },
+                  ]
+            }
           >
             {(active) =>
               active === 'proposals' ? (
