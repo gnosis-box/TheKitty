@@ -1,4 +1,4 @@
-import { ExternalLink, PartyPopper, Zap } from 'lucide-react';
+import { ExternalLink, PartyPopper, Trophy, Zap } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
@@ -29,7 +29,7 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
       <Card>
         <CardContent>
           <p className="text-sm text-[var(--color-muted)]">
-            Nothing spent yet. The kitty is fresh.
+            No payouts yet. Past rounds and spends will appear here.
           </p>
         </CardContent>
       </Card>
@@ -39,12 +39,7 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {entries.map((e) => {
-        const isExec = e.kind === 'executed';
-        const memo =
-          e.memo || (e.proposalId !== undefined
-            ? proposalsById?.get(e.proposalId.toString())?.memo
-            : undefined) ||
-          (isExec ? 'Group vote settled' : 'Direct pay');
+        const meta = describeEntry(e, proposalsById);
 
         return (
           <Card key={`${e.txHash}-${e.kind}`}>
@@ -52,21 +47,16 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
               <div className="flex items-start gap-3">
                 <div
                   className={
-                    isExec
-                      ? 'flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-soft)]'
-                      : 'flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100'
+                    'flex size-9 shrink-0 items-center justify-center rounded-full ' +
+                    meta.iconBg
                   }
                 >
-                  {isExec ? (
-                    <PartyPopper className="size-4 text-[var(--color-accent)]" />
-                  ) : (
-                    <Zap className="size-4 text-emerald-600" />
-                  )}
+                  {meta.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{memo}</p>
+                  <p className="text-sm font-medium">{meta.title}</p>
                   <div className="mt-1 flex items-center gap-2 text-xs text-[var(--color-muted)]">
-                    <span>to</span>
+                    <span>{meta.recipientLabel}</span>
                     <MemberAvatar address={e.recipient} size="xs" />
                   </div>
                   {e.kind === 'small-spend' && e.by && (
@@ -78,7 +68,8 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="font-mono text-sm font-semibold">
-                    −{formatCrc(e.amount)} CRC
+                    {meta.amountPrefix}
+                    {formatCrc(e.amount)} CRC
                   </span>
                   <a
                     href={`https://gnosisscan.io/tx/${e.txHash}`}
@@ -97,4 +88,50 @@ export function HistoryList({ entries, proposalsById, loading }: Props) {
       })}
     </div>
   );
+}
+
+interface EntryMeta {
+  title: string;
+  icon: JSX.Element;
+  iconBg: string;
+  recipientLabel: string;
+  amountPrefix: string;
+}
+
+function describeEntry(
+  e: HistoryEntry,
+  proposalsById: Map<string, ProposalView> | undefined,
+): EntryMeta {
+  if (e.kind === 'round-claimed') {
+    return {
+      title: `Round ${Number(e.round ?? 0) + 1} claimed`,
+      icon: <Trophy className="size-4 text-[var(--color-accent)]" />,
+      iconBg: 'bg-[var(--color-accent-soft)]',
+      recipientLabel: 'paid to',
+      amountPrefix: '',
+    };
+  }
+  if (e.kind === 'executed') {
+    const memo =
+      e.memo ||
+      (e.proposalId !== undefined
+        ? proposalsById?.get(e.proposalId.toString())?.memo
+        : undefined) ||
+      'Group vote settled';
+    return {
+      title: memo,
+      icon: <PartyPopper className="size-4 text-[var(--color-accent)]" />,
+      iconBg: 'bg-[var(--color-accent-soft)]',
+      recipientLabel: 'to',
+      amountPrefix: '−',
+    };
+  }
+  // small-spend
+  return {
+    title: e.memo || 'Direct pay',
+    icon: <Zap className="size-4 text-emerald-600" />,
+    iconBg: 'bg-emerald-100',
+    recipientLabel: 'to',
+    amountPrefix: '−',
+  };
 }

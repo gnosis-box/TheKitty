@@ -3,7 +3,7 @@ import { parseAbiItem } from 'viem';
 import { getPublicClient } from './public-client';
 import type { Address } from '@/types/kitty';
 
-export type HistoryKind = 'executed' | 'small-spend';
+export type HistoryKind = 'executed' | 'small-spend' | 'round-claimed';
 
 export interface HistoryEntry {
   kind: HistoryKind;
@@ -17,6 +17,9 @@ export interface HistoryEntry {
   proposalId?: bigint;
   /// Only set when kind === "small-spend" — the member who paid directly.
   by?: Address;
+  /// Only set when kind === "round-claimed" — the 0-based round index that
+  /// was paid out.
+  round?: number;
 }
 
 const EXECUTED_EVENT = parseAbiItem(
@@ -27,13 +30,20 @@ const SMALL_SPEND_EVENT = parseAbiItem(
   'event SmallSpend(address indexed by, address indexed recipient, uint128 amount, string memo)',
 );
 
-/// Fetch and merge `Executed` + `SmallSpend` events for a kitty governance
-/// contract. Returns newest-first. Block timestamps are not fetched here to
-/// keep the round-trip light — callers can resolve them lazily if needed.
+const ROUND_CLAIMED_EVENT = parseAbiItem(
+  'event RoundClaimed(uint32 indexed round, address indexed claimer, uint128 amount, uint32 nextClaimAt)',
+);
+
+/// Fetch and merge `Executed` + `SmallSpend` + `RoundClaimed` events for a
+/// kitty governance contract. Returns newest-first. Block timestamps are not
+/// fetched here to keep the round-trip light — callers can resolve them
+/// lazily if needed. RoundClaimed is the tontine-mode payout event; it
+/// co-exists with the free-pot events so a kitty that uses both surfaces
+/// both kinds in one timeline.
 export async function readKittyHistory(governance: Address): Promise<HistoryEntry[]> {
   const client = getPublicClient();
 
-  const [executed, smallSpend] = await Promise.all([
+  const [executed, smallSpend, roundClaimed] = await Promise.all([
     client.getLogs({
       address: governance,
       event: EXECUTED_EVENT,
@@ -42,6 +52,11 @@ export async function readKittyHistory(governance: Address): Promise<HistoryEntr
     client.getLogs({
       address: governance,
       event: SMALL_SPEND_EVENT,
+      fromBlock: 'earliest',
+    }),
+    client.getLogs({
+      address: governance,
+      event: ROUND_CLAIMED_EVENT,
       fromBlock: 'earliest',
     }),
   ]);
@@ -71,6 +86,19 @@ export async function readKittyHistory(governance: Address): Promise<HistoryEntr
       amount: log.args.amount as bigint,
       memo: (log.args.memo as string) ?? '',
       by: log.args.by as Address,
+    });
+  }
+
+  for (const log of roundClaimed) {
+    if (!log.args.claimer || log.args.amount === undefined) continue;
+    entries.push({
+      kind: 'round-claimed',
+      txHash: log.transactionHash,
+      blockNumber: log.blockNumber,
+      recipient: log.args.claimer as Address,
+      amount: log.args.amount as bigint,
+      memo: '',
+      round: Number(log.args.round ?? 0),
     });
   }
 
