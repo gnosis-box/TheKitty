@@ -10,9 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useKitty } from '@/hooks/use-kitty';
 import { useWallet } from '@/hooks/use-wallet';
+import { CIRCLES_CONFIG } from '@/lib/circles-config';
+import { saveKitty } from '@/lib/storage';
 import { buildTrustTx } from '@/lib/tx-builders';
 import { shortAddress } from '@/lib/utils';
-import type { Address } from '@/types/kitty';
+import type { Address, KittyRef } from '@/types/kitty';
 
 /// Landing page for an invite link of the form `/kitty/:id/join` (typically
 /// shared after the creator has spun up a kitty). Surfaces a single CTA that
@@ -37,12 +39,37 @@ export default function KittyJoinRoute() {
     state.members.some((m) => m.toLowerCase() === address.toLowerCase());
 
   async function onJoin() {
-    if (!state) return;
+    if (!state || !address) return;
     setSigning(true);
     try {
       toast.loading('Opening trust…', { id: 'kitty-join' });
       const [txHash] = await sendTransactions([buildTrustTx({ trustee: state.groupAvatar })]);
       if (!txHash) throw new Error('Host returned no tx hash');
+
+      // Save to the joiner's localStorage so their home lists this kitty
+      // alongside ones they created themselves. The kitty IS on-chain — this
+      // cache is just the front-end's index for fast home rendering.
+      const ref: KittyRef = {
+        governance,
+        groupAvatar: state.groupAvatar,
+        name: `Kitty ${shortAddress(governance)}`,
+        symbol: state.tontine.enabled ? 'TON' : 'POT',
+        members: [...state.members],
+        quorumPercent: state.quorumPercent,
+        smallTxThreshold: state.smallTxThreshold.toString(),
+        votingPeriod: state.votingPeriod,
+        createdAt: Math.floor(Date.now() / 1000),
+        chainId: CIRCLES_CONFIG.chainId,
+        mode: state.tontine.enabled ? 'tontine' : 'free',
+        ...(state.tontine.enabled
+          ? {
+              roundContribution: state.tontine.roundContribution.toString(),
+              roundDuration: state.tontine.roundDuration,
+            }
+          : {}),
+      };
+      saveKitty(address, ref);
+
       toast.success("You're in ✓", { id: 'kitty-join' });
       navigate(`/kitty/${governance}`);
     } catch (err) {
