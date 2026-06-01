@@ -64,7 +64,7 @@ export default function HomeRoute() {
     if (hasFree) {
       return {
         headerTitle: 'Your kitties',
-        headerSubtitle: 'Pool. Vote. Pay. — or rotate the pot, on Circles.',
+        headerSubtitle: 'Rotating tontines and group pots on Circles.',
         emptyCopy:
           'No kitties yet. Start a rotating tontine, or a free-form group pot.',
       };

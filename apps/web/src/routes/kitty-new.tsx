@@ -228,7 +228,6 @@ export default function KittyNewRoute() {
         <Card>
           <CardHeader>
             <CardTitle>Identity</CardTitle>
-            <CardDescription>How the kitty shows up on-chain.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-1.5">
@@ -263,11 +262,9 @@ export default function KittyNewRoute() {
         <Card>
           <CardHeader>
             <CardTitle>Members</CardTitle>
-            <CardDescription>
-              {form.mode === 'tontine'
-                ? 'Order is the rotation order. Index 0 claims round 0.'
-                : 'Circles addresses that can deposit, propose and vote. Min 2, no duplicates.'}
-            </CardDescription>
+            {form.mode === 'tontine' && (
+              <CardDescription>Index 0 claims round 0.</CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             <InviteButton variant="primary" label="Invite a friend" />
@@ -354,7 +351,6 @@ export default function KittyNewRoute() {
           <Card>
             <CardHeader>
               <CardTitle>Governance</CardTitle>
-              <CardDescription>How the pot spends.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-1.5">
@@ -400,11 +396,6 @@ export default function KittyNewRoute() {
           <Card>
             <CardHeader>
               <CardTitle>Rotation</CardTitle>
-              <CardDescription>
-                Each round, every member commits the same amount. The current
-                claimer takes the full pot ({form.memberInputs.filter(Boolean).length || '—'}×
-                contribution).
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-1.5">
@@ -431,9 +422,6 @@ export default function KittyNewRoute() {
                     <option value="days">days</option>
                   </select>
                 </div>
-                <p className="text-xs text-[var(--color-muted)]">
-                  Need to test the rotation live? Pick seconds or minutes.
-                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="roundContribution">Per-member contribution · CRC</Label>
@@ -458,12 +446,9 @@ export default function KittyNewRoute() {
                   onChange={(e) => setField('firstClaimDelayDays', e.target.value)}
                   required
                 />
-                <p className="text-xs text-[var(--color-muted)]">
-                  Use 0 to let round 0 be claimable as soon as the pot is funded.
-                </p>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="cyclesCount">Cycles · how many rotations</Label>
+                <Label htmlFor="cyclesCount">Cycles</Label>
                 <Input
                   id="cyclesCount"
                   type="number"
@@ -473,10 +458,6 @@ export default function KittyNewRoute() {
                   onChange={(e) => setField('cyclesCount', e.target.value)}
                   required
                 />
-                <p className="text-xs text-[var(--color-muted)]">
-                  1 means each member claims once. Higher = multiple rotations
-                  before stakes are refundable.
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -485,15 +466,11 @@ export default function KittyNewRoute() {
         {form.mode === 'tontine' && (
           <Card>
             <CardHeader>
-              <CardTitle>Penalty stake (optional)</CardTitle>
-              <CardDescription>
-                Locks an extra deposit per member that gets slashed if they default
-                on a round. Set to 0 for an honor-system tontine.
-              </CardDescription>
+              <CardTitle>Penalty stake</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="stakeCrc">Penalty stake · CRC per member</Label>
+                <Label htmlFor="stakeCrc">CRC per member · 0 to skip</Label>
                 <Input
                   id="stakeCrc"
                   type="number"
@@ -502,11 +479,6 @@ export default function KittyNewRoute() {
                   value={form.stakeCrc}
                   onChange={(e) => setField('stakeCrc', e.target.value)}
                 />
-                <p className="text-xs text-[var(--color-muted)]">
-                  When non-zero, defaulting members lose 2× their shortfall
-                  from this stake. The kitty waits for everyone to stake before
-                  round 0 opens.
-                </p>
               </div>
             </CardContent>
           </Card>
