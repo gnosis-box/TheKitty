@@ -26,10 +26,20 @@ interface FormState {
   smallThresholdCrc: string;
   votingHours: string;
   mode: KittyMode;
-  roundDays: string;
+  roundLength: string;
+  roundUnit: RoundUnit;
   roundContributionCrc: string;
   firstClaimDelayDays: string;
 }
+
+type RoundUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+
+const ROUND_UNIT_SECONDS: Record<RoundUnit, number> = {
+  seconds: 1,
+  minutes: 60,
+  hours: 3600,
+  days: 86400,
+};
 
 const DEFAULTS: FormState = {
   name: '',
@@ -39,7 +49,8 @@ const DEFAULTS: FormState = {
   smallThresholdCrc: '5',
   votingHours: '24',
   mode: 'tontine',
-  roundDays: '30',
+  roundLength: '30',
+  roundUnit: 'days',
   roundContributionCrc: '50',
   firstClaimDelayDays: '30',
 };
@@ -382,15 +393,32 @@ export default function KittyNewRoute() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="roundDays">Round length · days</Label>
-                <Input
-                  id="roundDays"
-                  type="number"
-                  min={1}
-                  value={form.roundDays}
-                  onChange={(e) => setField('roundDays', e.target.value)}
-                  required
-                />
+                <Label htmlFor="roundLength">Round length</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="roundLength"
+                    type="number"
+                    min={1}
+                    step="any"
+                    value={form.roundLength}
+                    onChange={(e) => setField('roundLength', e.target.value)}
+                    required
+                    className="flex-1"
+                  />
+                  <select
+                    value={form.roundUnit}
+                    onChange={(e) => setField('roundUnit', e.target.value as RoundUnit)}
+                    className="rounded-[var(--radius-input)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm"
+                  >
+                    <option value="seconds">seconds</option>
+                    <option value="minutes">minutes</option>
+                    <option value="hours">hours</option>
+                    <option value="days">days</option>
+                  </select>
+                </div>
+                <p className="text-xs text-[var(--color-muted)]">
+                  Need to test the rotation live? Pick seconds or minutes.
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="roundContribution">Per-member contribution · CRC</Label>
@@ -410,6 +438,7 @@ export default function KittyNewRoute() {
                   id="firstClaim"
                   type="number"
                   min={0}
+                  step="any"
                   value={form.firstClaimDelayDays}
                   onChange={(e) => setField('firstClaimDelayDays', e.target.value)}
                   required
@@ -530,9 +559,13 @@ function validate(form: FormState, _self: Address | null): Validation {
 
   let tontine: TontineInput = TONTINE_OFF;
   if (form.mode === 'tontine') {
-    const roundDays = Number(form.roundDays);
-    if (!Number.isFinite(roundDays) || roundDays <= 0) {
-      return { ...fallback, error: 'Round length must be a positive number of days.' };
+    const roundLength = Number(form.roundLength);
+    if (!Number.isFinite(roundLength) || roundLength <= 0) {
+      return { ...fallback, error: 'Round length must be a positive number.' };
+    }
+    const roundDurationSeconds = Math.floor(roundLength * ROUND_UNIT_SECONDS[form.roundUnit]);
+    if (roundDurationSeconds < 1) {
+      return { ...fallback, error: 'Round length is too short — at least 1 second.' };
     }
     let contribution: bigint;
     try {
@@ -550,7 +583,7 @@ function validate(form: FormState, _self: Address | null): Validation {
     const now = Math.floor(Date.now() / 1000);
     tontine = {
       enabled: true,
-      roundDurationSeconds: Math.floor(roundDays * 86400),
+      roundDurationSeconds,
       roundContribution: contribution,
       firstClaimAtSeconds: now + Math.floor(firstClaimDelayDays * 86400),
     };
