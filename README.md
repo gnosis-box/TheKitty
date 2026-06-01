@@ -66,16 +66,6 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 - **Contracts** — Foundry, Solidity 0.8.24, 61 tests passing. The free-pot core passed a Trail of Bits review; the tontine extension is post-audit and lives on top.
 - **Hosting** — Coolify (Docker + Caddy)
 
-## Status
-
-- [x] Phase 0 — sanity check the iframe / SDK / Safe chain
-- [x] Phase 1 — `KittyGovernance` + `KittyFactory` deployed
-- [x] Phase 2 — create-a-kitty UI (1 tx)
-- [x] Phase 3 — deposit, propose, approve, execute, small-spend
-- [x] Phase 4 — playful theme, Circles profile enrichment, history tab
-- [x] Phase 5 — rotating tontine (`claimRound`, round calendar, current-claimer CTA)
-- [ ] V2 — redeem CRC, invite-to-join links, demurrage delta surfaced in UI
-
 ## License
 
 AGPL-3.0
