@@ -1,12 +1,14 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import AboutRoute from './routes/about';
 import HomeRoute from './routes/home';
 import KittyDepositRoute from './routes/kitty-deposit';
 import KittyDetailRoute from './routes/kitty-detail';
 import KittyJoinRoute from './routes/kitty-join';
 import KittyNewRoute from './routes/kitty-new';
 import KittyProposeRoute from './routes/kitty-propose';
+import StatsRoute from './routes/stats';
 import { captureInviterFromUrl } from './lib/inviter';
 
 export default function App() {
@@ -25,6 +27,8 @@ export default function App() {
         <Route path="/kitty/:id/join" element={<KittyJoinRoute />} />
         <Route path="/kitty/:id/deposit" element={<KittyDepositRoute />} />
         <Route path="/kitty/:id/propose" element={<KittyProposeRoute />} />
+        <Route path="/stats" element={<StatsRoute />} />
+        <Route path="/about" element={<AboutRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

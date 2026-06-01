@@ -12,7 +12,6 @@ import { InviteButton } from '@/components/InviteButton';
 import { Logo } from '@/components/Logo';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { useWallet } from '@/hooks/use-wallet';
-import { readTrustedCount } from '@/lib/kitty-reader';
 import { loadKitties } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
 
@@ -27,31 +26,6 @@ export default function HomeRoute() {
     }
     setKitties(loadKitties(address));
   }, [address]);
-
-  // For each kitty card, compute how many members the viewer already trusts.
-  // Surfaced as a small "X in your trust graph" hint to make the trust graph
-  // membership of the kitty legible at a glance.
-  const [trustCounts, setTrustCounts] = useState<Record<string, number>>({});
-  useEffect(() => {
-    if (!address || kitties.length === 0) {
-      setTrustCounts({});
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        kitties.map(async (k) => {
-          const count = await readTrustedCount(address, k.members);
-          return [k.governance.toLowerCase(), count] as const;
-        }),
-      );
-      if (cancelled) return;
-      setTrustCounts(Object.fromEntries(entries));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [address, kitties]);
 
   // Pick the header copy based on what the user actually has. If they only
   // have tontines (or none yet), the tontine framing is correct. If they
@@ -143,14 +117,35 @@ export default function HomeRoute() {
       {kitties.length > 0 && (
         <section className="flex flex-col gap-3">
           {kitties.map((k) => (
-            <KittyCard
-              key={k.governance}
-              kitty={k}
-              trustedCount={trustCounts[k.governance.toLowerCase()]}
-            />
+            <KittyCard key={k.governance} kitty={k} />
           ))}
         </section>
       )}
+
+      <AppFooter />
     </main>
+  );
+}
+
+function AppFooter() {
+  return (
+    <footer className="mt-4 flex items-center justify-center gap-5 text-xs text-[var(--color-muted)]">
+      <Link to="/stats" className="hover:text-[var(--color-text)]">
+        Stats
+      </Link>
+      <span className="text-[var(--color-border)]">·</span>
+      <Link to="/about" className="hover:text-[var(--color-text)]">
+        About
+      </Link>
+      <span className="text-[var(--color-border)]">·</span>
+      <a
+        href="https://github.com/gnosis-box/TheKitty"
+        target="_blank"
+        rel="noreferrer"
+        className="hover:text-[var(--color-text)]"
+      >
+        GitHub
+      </a>
+    </footer>
   );
 }

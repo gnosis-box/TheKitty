@@ -1,20 +1,11 @@
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, Network, RotateCw, Users } from 'lucide-react';
+import { ArrowUpRight, RotateCw, Users } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { KittyRef } from '@/types/kitty';
 
-interface Props {
-  kitty: KittyRef;
-  /// How many of the kitty's members the viewing wallet already trusts via
-  /// Circles V2 Hub. When undefined the line is omitted (still loading or no
-  /// viewer). When zero we still hide it — surfacing "0 in your trust graph"
-  /// would feel like a downer instead of a signal.
-  trustedCount?: number;
-}
-
-export function KittyCard({ kitty, trustedCount }: Props) {
+export function KittyCard({ kitty }: { kitty: KittyRef }) {
   const mode = kitty.mode ?? 'free';
   const isTontine = mode === 'tontine';
 
@@ -59,12 +50,6 @@ export function KittyCard({ kitty, trustedCount }: Props) {
           {shortAddress(kitty.governance)}
         </p>
         <p className="text-xs text-[var(--color-muted)]">{detail}</p>
-        {typeof trustedCount === 'number' && trustedCount > 0 && (
-          <p className="inline-flex items-center gap-1 text-xs text-[color-mix(in_oklab,var(--color-accent),black_20%)]">
-            <Network className="size-3" />
-            {trustedCount} in your trust graph
-          </p>
-        )}
       </div>
       <ArrowUpRight className="size-4 text-[var(--color-muted)] transition-colors group-hover:text-[var(--color-text)]" />
     </Link>
