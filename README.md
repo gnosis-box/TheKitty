@@ -33,7 +33,7 @@ A second mode (**free pot**) is available for groups that want a shared treasury
 ## Architecture
 
 ```
-User Safe (Circles human)
+User wallet (Circles human)
    │
    │ via @aboutcircles/miniapp-sdk → sendTransactions([...])
    ▼
@@ -68,7 +68,7 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 
 - **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
 - **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
-- **Contracts** — Foundry, Solidity 0.8.24, 61 tests passing. The free-pot core passed a Trail of Bits review; the tontine extension is post-audit and lives on top.
+- **Contracts** — Foundry, Solidity 0.8.24, 77 tests passing. The free-pot core passed a Trail of Bits review; the tontine + stake extensions are post-audit and live on top.
 - **Hosting** — Coolify (Docker + Caddy)
 
 ## License
