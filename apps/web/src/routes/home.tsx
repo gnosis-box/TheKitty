@@ -9,6 +9,7 @@ import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { InviterBanner } from '@/components/pot/InviterBanner';
 import { InviteButton } from '@/components/InviteButton';
 import { Logo } from '@/components/Logo';
+import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { useWallet } from '@/hooks/use-wallet';
 import { loadKitties } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
@@ -65,8 +66,10 @@ export default function HomeRoute() {
               <InviteButton variant="pill" />
               <MemberAvatar address={address} size="sm" />
             </>
+          ) : isMiniappHost ? (
+            <Badge tone="neutral">Waiting…</Badge>
           ) : (
-            <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
+            <OpenInPlayground />
           )}
         </div>
       </header>
@@ -92,9 +95,12 @@ export default function HomeRoute() {
         <Card>
           <CardContent>
             <p className="text-sm text-[var(--color-muted)]">
-              Open this mini-app inside the Circles host to see your kitties — the host wallet
-              injects your Safe address.
+              The Kitty needs the Circles host to inject your Safe wallet — open this URL inside
+              the official playground to start.
             </p>
+            <div className="mt-3">
+              <OpenInPlayground />
+            </div>
           </CardContent>
         </Card>
       )}
