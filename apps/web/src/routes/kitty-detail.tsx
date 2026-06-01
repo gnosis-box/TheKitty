@@ -9,7 +9,6 @@ import {
   PiggyBank,
   RefreshCw,
   Send,
-  Sparkles,
   Trophy,
 } from 'lucide-react';
 
@@ -157,23 +156,6 @@ export default function KittyDetailRoute() {
               <Send className="size-4" /> Spend
             </Link>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="size-4" /> Saved from decay
-              </CardTitle>
-              <CardDescription>
-                Personal CRC loses ~7%/yr when it sits still. This is what the kitty kept alive
-                by keeping the money in motion.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="font-mono text-2xl">
-                +{formatCrc(estimateDecaySaved(state.totalDeposited))} CRC
-              </p>
-            </CardContent>
-          </Card>
 
           <Card>
             <CardHeader>
@@ -358,15 +340,6 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="font-mono text-base">{value}</p>
     </div>
   );
-}
-
-/// Placeholder decay calculation. Circles' demurrage shrinks idle CRC by
-/// ~7%/yr. Real version (Phase 4 polish) compares the kitty's actual balance
-/// trajectory against the "everyone kept it in their own wallet" counterfactual.
-/// For now, return ~7%/yr prorated over a 30-day window — indicative only.
-function estimateDecaySaved(totalDeposited: bigint): bigint {
-  // (totalDeposited * 0.07 / 12) — one month at 7%/yr.
-  return (totalDeposited * 7n) / 1200n;
 }
 
 interface TontineCardProps {

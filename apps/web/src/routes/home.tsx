@@ -34,9 +34,9 @@ export default function HomeRoute() {
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
               The Kitty
             </p>
-            <h1 className="text-2xl font-semibold leading-tight">Your group pots</h1>
+            <h1 className="text-2xl font-semibold leading-tight">Your tontines</h1>
             <p className="mt-1 text-sm text-[var(--color-muted)]">
-              Programmable mutual aid for Circles communities.
+              On-chain rotating savings, no organizer needed.
             </p>
           </div>
         </div>
@@ -58,7 +58,7 @@ export default function HomeRoute() {
         to="/kitty/new"
         className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_10px_28px_-12px_var(--color-shadow)] hover:brightness-110"
       >
-        <Plus className="size-4" /> Create a kitty
+        <Plus className="size-4" /> Start a tontine
       </Link>
 
       {!isConnected && (
@@ -76,8 +76,8 @@ export default function HomeRoute() {
         <Card>
           <CardContent>
             <p className="text-sm text-[var(--color-muted)]">
-              No kitties yet. Start a rotating tontine or a free pot with 2+ Circles humans
-              you already trust.
+              No tontines yet. Gather 2+ Circles humans you trust, set a contribution and a
+              round length, and the rotation runs itself — no organizer holds the pot.
             </p>
           </CardContent>
         </Card>

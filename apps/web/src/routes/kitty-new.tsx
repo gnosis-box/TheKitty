@@ -40,7 +40,7 @@ const DEFAULTS: FormState = {
   quorum: '51',
   smallThresholdCrc: '5',
   votingHours: '24',
-  mode: 'free',
+  mode: 'tontine',
   roundDays: '30',
   roundContributionCrc: '50',
   firstClaimDelayDays: '30',
@@ -175,7 +175,7 @@ export default function KittyNewRoute() {
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
             New kitty
           </p>
-          <h1 className="text-2xl font-semibold">Spin up a group pot</h1>
+          <h1 className="text-2xl font-semibold">Start a tontine</h1>
         </div>
       </header>
 
@@ -234,16 +234,16 @@ export default function KittyNewRoute() {
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
               <ModeOption
-                label="Free pot"
-                helper="Anyone can propose a spend. Quorum decides."
-                active={form.mode === 'free'}
-                onClick={() => setField('mode', 'free')}
-              />
-              <ModeOption
                 label="Rotating tontine"
                 helper="Each member claims the pot in turn (ROSCA)."
                 active={form.mode === 'tontine'}
                 onClick={() => setField('mode', 'tontine')}
+              />
+              <ModeOption
+                label="Free pot"
+                helper="Anyone can propose a spend. Quorum decides."
+                active={form.mode === 'free'}
+                onClick={() => setField('mode', 'free')}
               />
             </div>
           </CardContent>
