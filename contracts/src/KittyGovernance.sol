@@ -72,6 +72,21 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     uint128 public immutable smallTxThreshold;
     uint32 public immutable votingPeriod;
 
+    /// @notice Optional rotating-savings (tontine / ROSCA) parameters.
+    ///         When `tontineMode == true`, members can call `claimRound()` in
+    ///         turn (by index in `_members`) once per `roundDuration`, each
+    ///         time pulling `roundContribution * memberCount` out of the pot.
+    ///         Free-form `propose`/`smallSpend` remain available alongside.
+    bool public immutable tontineMode;
+    uint32 public immutable roundDuration;
+    uint128 public immutable roundContribution;
+
+    /// @notice Index of the next round to be claimed (0-based, no wrap-around).
+    uint32 public currentRound;
+    /// @notice Earliest timestamp at which the current claimer can call
+    ///         `claimRound`. Bumped by `roundDuration` after each claim.
+    uint32 public nextClaimAt;
+
     address[] private _members;
     mapping(address => bool) public isMember;
 
@@ -89,10 +104,31 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         string memo;
     }
 
+    /// @notice Tontine configuration passed to the constructor.
+    /// @dev    `enabled == false` disables the rotating-savings path entirely;
+    ///         the other fields must be zero in that case. When enabled, both
+    ///         `roundDuration` and `roundContribution` must be non-zero, and
+    ///         `firstClaimAt` sets when round 0 becomes claimable (use
+    ///         `block.timestamp` for "immediately" or any future timestamp
+    ///         for a delayed start).
+    struct TontineConfig {
+        bool enabled;
+        uint32 roundDuration;
+        uint128 roundContribution;
+        uint32 firstClaimAt;
+    }
+
     Proposal[] private _proposals;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
 
     event KittyInitialized(address indexed group, address[] members);
+    event TontineInitialized(uint32 roundDuration, uint128 roundContribution, uint32 firstClaimAt);
+    event RoundClaimed(
+        uint32 indexed round,
+        address indexed claimer,
+        uint128 amount,
+        uint32 nextClaimAt
+    );
     event Deposit(address indexed from, uint128 amount, uint128 newTotal);
     event Proposed(
         uint256 indexed id,
@@ -127,6 +163,10 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     error BadVotingPeriod();
     error DirectMintNotAllowed();
     error MemoTooLong();
+    error NotTontine();
+    error BadTontineParams();
+    error RoundNotReady();
+    error NotYourTurn();
 
     modifier onlyMember() {
         if (!isMember[msg.sender]) revert NotMember();
@@ -139,12 +179,27 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         address[] memory members_,
         uint8 _quorumPercent,
         uint128 _smallTxThreshold,
-        uint32 _votingPeriod
+        uint32 _votingPeriod,
+        TontineConfig memory _tontine
     ) {
         if (_hub == address(0) || _groupAvatar == address(0)) revert ZeroAddress();
         if (_quorumPercent == 0 || _quorumPercent > 100) revert BadQuorum();
         if (_votingPeriod == 0) revert BadVotingPeriod();
         if (members_.length < 2) revert NotEnoughMembers();
+
+        if (_tontine.enabled) {
+            if (_tontine.roundDuration == 0 || _tontine.roundContribution == 0) {
+                revert BadTontineParams();
+            }
+            // slither-disable-next-line timestamp
+            if (_tontine.firstClaimAt < block.timestamp) revert BadTontineParams();
+        } else {
+            if (
+                _tontine.roundDuration != 0
+                    || _tontine.roundContribution != 0
+                    || _tontine.firstClaimAt != 0
+            ) revert BadTontineParams();
+        }
 
         hub = _hub;
         groupAvatar = _groupAvatar;
@@ -152,6 +207,11 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         quorumPercent = _quorumPercent;
         smallTxThreshold = _smallTxThreshold;
         votingPeriod = _votingPeriod;
+
+        tontineMode = _tontine.enabled;
+        roundDuration = _tontine.roundDuration;
+        roundContribution = _tontine.roundContribution;
+        nextClaimAt = _tontine.firstClaimAt;
 
         for (uint256 i = 0; i < members_.length; i++) {
             address m = members_[i];
@@ -162,6 +222,13 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         }
 
         emit KittyInitialized(_groupAvatar, members_);
+        if (_tontine.enabled) {
+            emit TontineInitialized(
+                _tontine.roundDuration,
+                _tontine.roundContribution,
+                _tontine.firstClaimAt
+            );
+        }
     }
 
     // ── ERC-1155 receiver ───────────────────────────────────────────────────
@@ -281,6 +348,48 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         p.executed = true;
         emit Executed(id, p.recipient, p.amount);
         _transferOut(p.recipient, p.amount);
+    }
+
+    // ── tontine ─────────────────────────────────────────────────────────────
+
+    /// @notice Address whose turn it is to claim the current round. Reverts if
+    ///         tontine mode is disabled. Rotation is deterministic by member
+    ///         index, modulo member count, so the cycle restarts automatically.
+    function currentClaimer() external view returns (address) {
+        if (!tontineMode) revert NotTontine();
+        return _members[currentRound % _members.length];
+    }
+
+    /// @notice Pot share paid out at each round (`roundContribution * members`).
+    function roundPayout() public view returns (uint128) {
+        return roundContribution * uint128(_members.length);
+    }
+
+    /// @notice Claim the current round's payout. Only the member at
+    ///         `currentRound % members.length` can call this, and only once
+    ///         `nextClaimAt` has elapsed. Rotation advances by one and
+    ///         `nextClaimAt` is bumped by `roundDuration` regardless of when
+    ///         the claimer actually called.
+    /// @dev    Reverts if pot balance is insufficient (members didn't all
+    ///         deposit their share for this round). The cycle pauses until
+    ///         enough collateral is in the pot.
+    function claimRound() external onlyMember nonReentrant {
+        if (!tontineMode) revert NotTontine();
+        // slither-disable-next-line timestamp
+        if (block.timestamp < nextClaimAt) revert RoundNotReady();
+
+        uint32 round = currentRound;
+        address claimer = _members[round % _members.length];
+        if (msg.sender != claimer) revert NotYourTurn();
+
+        uint128 payout = roundPayout();
+        uint32 nextAt = uint32(block.timestamp) + roundDuration;
+
+        currentRound = round + 1;
+        nextClaimAt = nextAt;
+
+        emit RoundClaimed(round, claimer, payout, nextAt);
+        _transferOut(claimer, payout);
     }
 
     /// @dev Transfers pot tokens out of THIS contract (the custodian), not the group.

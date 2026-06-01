@@ -102,7 +102,23 @@ contract KittyFactoryTest is Test {
             quorumPercent: 51,
             smallTxThreshold: 5e18,
             votingPeriod: 1 days,
-            trustExpiry: type(uint96).max
+            trustExpiry: type(uint96).max,
+            tontine: KittyGovernance.TontineConfig({
+                enabled: false,
+                roundDuration: 0,
+                roundContribution: 0,
+                firstClaimAt: 0
+            })
+        });
+    }
+
+    function _tontineKittyArgs() internal view returns (KittyFactory.KittyArgs memory k) {
+        k = _kittyArgs();
+        k.tontine = KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 30 days,
+            roundContribution: 50e18,
+            firstClaimAt: uint32(block.timestamp + 30 days)
         });
     }
 
@@ -180,5 +196,19 @@ contract KittyFactoryTest is Test {
         vm.prank(creator);
         vm.expectRevert(KittyFactory.TrustExpiryInPast.selector);
         factory.createKitty(_groupArgs(), k);
+    }
+
+    function test_createTontineKitty_endToEnd() public {
+        vm.prank(creator);
+        (, address governance) = factory.createKitty(_groupArgs(), _tontineKittyArgs());
+
+        KittyGovernance gov = KittyGovernance(governance);
+        assertTrue(gov.tontineMode());
+        assertEq(gov.roundDuration(), 30 days);
+        assertEq(gov.roundContribution(), 50e18);
+        assertEq(gov.roundPayout(), 150e18);
+        assertEq(gov.currentRound(), 0);
+        // First claimer is the first listed member (alice).
+        assertEq(gov.currentClaimer(), alice);
     }
 }
