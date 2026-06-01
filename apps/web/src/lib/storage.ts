@@ -1,3 +1,4 @@
+import { CIRCLES_CONFIG } from './circles-config';
 import type { Address, KittyRef } from '@/types/kitty';
 
 // Until we have an on-chain index of kitties an address belongs to, the front
@@ -10,7 +11,11 @@ function keyFor(owner: Address): string {
   return `${NAMESPACE}.kitties.${owner.toLowerCase()}`;
 }
 
-export function loadKitties(owner: Address): KittyRef[] {
+/// Read everything we have cached for `owner`. Use `loadKitties` instead when
+/// you only want the entries belonging to the currently-configured factory —
+/// this one returns whatever's on disk regardless of which factory spawned
+/// them, useful for migrations and debugging.
+export function loadAllKitties(owner: Address): KittyRef[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(keyFor(owner));
@@ -20,6 +25,17 @@ export function loadKitties(owner: Address): KittyRef[] {
   } catch {
     return [];
   }
+}
+
+/// Load only kitties spawned by the currently-configured `kittyFactoryAddress`.
+/// Entries without a `factoryAddress` (legacy saves) are dropped — they
+/// belong to a previous factory and would only confuse the user. Chain
+/// discovery on home mount will re-populate the truly current ones.
+export function loadKitties(owner: Address): KittyRef[] {
+  const all = loadAllKitties(owner);
+  const factory = CIRCLES_CONFIG.kittyFactoryAddress?.toLowerCase();
+  if (!factory) return all;
+  return all.filter((k) => k.factoryAddress?.toLowerCase() === factory);
 }
 
 export function saveKitty(owner: Address, kitty: KittyRef): void {

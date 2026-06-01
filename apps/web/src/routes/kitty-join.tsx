@@ -60,6 +60,7 @@ export default function KittyJoinRoute() {
         votingPeriod: state.votingPeriod,
         createdAt: Math.floor(Date.now() / 1000),
         chainId: CIRCLES_CONFIG.chainId,
+        factoryAddress: CIRCLES_CONFIG.kittyFactoryAddress,
         mode: state.tontine.enabled ? 'tontine' : 'free',
         ...(state.tontine.enabled
           ? {

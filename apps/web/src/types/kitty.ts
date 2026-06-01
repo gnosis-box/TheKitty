@@ -23,6 +23,12 @@ export interface KittyRef {
   createdAt: number;
   /// Chain id (100 = Gnosis mainnet / sandbox).
   chainId: number;
+  /// Address of the KittyFactory that spawned this kitty. Used by the home
+  /// to filter the local cache down to the currently-configured factory so
+  /// legacy kitties from older factory deployments don't keep showing.
+  /// Optional for backward compat — entries without it are treated as
+  /// belonging to an old factory and hidden.
+  factoryAddress?: Address;
   /// Whether the kitty was created in rotating-savings mode. Optional for
   /// backward compat with entries saved before this field existed — those
   /// default to 'free' (the only mode that existed back then).

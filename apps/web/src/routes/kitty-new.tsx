@@ -167,6 +167,7 @@ export default function KittyNewRoute() {
         votingPeriod: validation.votingPeriodSeconds,
         createdAt: Math.floor(Date.now() / 1000),
         chainId: CIRCLES_CONFIG.chainId,
+        factoryAddress: CIRCLES_CONFIG.kittyFactoryAddress,
         mode: form.mode,
         ...(form.mode === 'tontine' && validation.tontine.enabled
           ? {

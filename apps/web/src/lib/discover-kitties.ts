@@ -90,6 +90,7 @@ export async function discoverKittiesForMember(viewer: Address): Promise<KittyRe
       votingPeriod: Number(e.args.votingPeriod ?? 0),
       createdAt: Math.floor(Date.now() / 1000),
       chainId: CIRCLES_CONFIG.chainId,
+      factoryAddress: factory,
       mode: isTontine ? 'tontine' : 'free',
       ...(isTontine
         ? {
