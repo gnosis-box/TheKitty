@@ -1,7 +1,19 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, PiggyBank, Send, Sparkles, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  ArrowLeft,
+  Check,
+  Clock,
+  ExternalLink,
+  PiggyBank,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Trophy,
+} from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +24,8 @@ import { HistoryList } from '@/components/pot/HistoryList';
 import { useHistory } from '@/hooks/use-history';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
+import { buildClaimRoundTx } from '@/lib/tx-builders';
+import type { TontineState } from '@/lib/kitty-reader';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { Address, ProposalView } from '@/types/kitty';
 
@@ -95,7 +109,9 @@ export default function KittyDetailRoute() {
                 <PiggyBank className="size-4" /> Pool
               </CardTitle>
               <CardDescription>
-                Pot tokens custodied by the governance contract.
+                {state.tontine.enabled
+                  ? 'Rotating savings pool (ROSCA). Each round one member claims the full pot.'
+                  : 'Pot tokens custodied by the governance contract.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -112,6 +128,16 @@ export default function KittyDetailRoute() {
               </div>
             </CardContent>
           </Card>
+
+          {state.tontine.enabled && (
+            <TontineCard
+              governance={governance}
+              tontine={state.tontine}
+              members={state.members}
+              selfAddress={address}
+              onClaimed={refreshAll}
+            />
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Link
@@ -337,4 +363,149 @@ function Stat({ label, value }: { label: string; value: string }) {
 function estimateDecaySaved(totalDeposited: bigint): bigint {
   // (totalDeposited * 0.07 / 12) — one month at 7%/yr.
   return (totalDeposited * 7n) / 1200n;
+}
+
+interface TontineCardProps {
+  governance: Address;
+  tontine: TontineState;
+  members: Address[];
+  selfAddress: Address | null;
+  onClaimed: () => void;
+}
+
+function TontineCard({ governance, tontine, members, selfAddress, onClaimed }: TontineCardProps) {
+  const { sendTransactions } = useWallet();
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const [claiming, setClaiming] = useState(false);
+
+  // Re-tick once per second so the countdown stays accurate without a full refresh.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const ready = now >= tontine.nextClaimAt;
+  const isMyTurn =
+    selfAddress != null &&
+    tontine.currentClaimer.toLowerCase() === selfAddress.toLowerCase();
+
+  async function onClaim() {
+    setClaiming(true);
+    try {
+      toast.loading('Claiming round…', { id: 'tontine-claim' });
+      const [txHash] = await sendTransactions([buildClaimRoundTx({ governance })]);
+      if (!txHash) throw new Error('Host returned no tx hash');
+      toast.success('Round claimed ✓', { id: 'tontine-claim' });
+      onClaimed();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Claim failed', {
+        id: 'tontine-claim',
+      });
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Trophy className="size-4" /> Round {tontine.currentRound + 1}
+        </CardTitle>
+        <CardDescription>
+          {ready ? (
+            <span className="inline-flex items-center gap-1.5 text-[color-mix(in_oklab,var(--color-accent),black_20%)]">
+              <Check className="size-3.5" /> Ready to claim
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="size-3.5" /> Opens in {formatCountdown(tontine.nextClaimAt - now)}
+            </span>
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] bg-[var(--color-surface-hi)] p-3">
+          <div className="flex items-center gap-2">
+            <MemberAvatar
+              address={tontine.currentClaimer}
+              size="sm"
+              selfAddress={selfAddress}
+            />
+            {isMyTurn && <Badge tone="accent">your turn</Badge>}
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
+              Payout
+            </p>
+            <p className="font-mono text-base">{formatCrc(tontine.roundPayout)} CRC</p>
+          </div>
+        </div>
+
+        {isMyTurn && (
+          <Button
+            type="button"
+            size="lg"
+            onClick={onClaim}
+            disabled={!ready || claiming}
+            className="w-full"
+          >
+            {claiming
+              ? 'Claiming…'
+              : ready
+              ? `Claim ${formatCrc(tontine.roundPayout)} CRC`
+              : `Opens in ${formatCountdown(tontine.nextClaimAt - now)}`}
+          </Button>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
+            Rotation order
+          </p>
+          {members.map((m, idx) => {
+            const cyclePos = idx - (tontine.currentRound % members.length);
+            const isPast = cyclePos < 0;
+            const isCurrent = cyclePos === 0;
+            return (
+              <div
+                key={m}
+                className={
+                  'flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm ' +
+                  (isCurrent
+                    ? 'bg-[var(--color-accent-soft)]'
+                    : isPast
+                    ? 'text-[var(--color-muted)]'
+                    : '')
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-5 text-center text-xs font-mono text-[var(--color-muted)]">
+                    {idx + 1}
+                  </span>
+                  <MemberAvatar
+                    address={m}
+                    size="sm"
+                    selfAddress={selfAddress}
+                  />
+                </div>
+                {isCurrent && <Badge tone="accent">now</Badge>}
+                {isPast && <Check className="size-3.5 text-[var(--color-muted)]" />}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return 'now';
+  const days = Math.floor(seconds / 86400);
+  if (days > 0) return `${days}d ${Math.floor((seconds % 86400) / 3600)}h`;
+  const hours = Math.floor(seconds / 3600);
+  if (hours > 0) return `${hours}h ${Math.floor((seconds % 3600) / 60)}m`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
 }
