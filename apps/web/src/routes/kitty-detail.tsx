@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useChainTime } from '@/hooks/use-chain-time';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -402,14 +403,11 @@ interface TontineCardProps {
 
 function TontineCard({ governance, tontine, members, selfAddress, onClaimed }: TontineCardProps) {
   const { sendTransactions } = useWallet();
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  // Anchor the countdown on block.timestamp instead of Date.now() so two
+  // devices viewing the same kitty agree on "time left" within ~1s. The
+  // hook resyncs the chain offset every 30s under the hood.
+  const now = useChainTime();
   const [claiming, setClaiming] = useState(false);
-
-  // Re-tick once per second so the countdown stays accurate without a full refresh.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   const ready = now >= tontine.nextClaimAt;
   const isMyTurn =
