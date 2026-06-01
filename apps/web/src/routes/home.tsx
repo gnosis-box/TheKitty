@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { KittyCard } from '@/components/pot/KittyCard';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
+import { InviterBanner } from '@/components/pot/InviterBanner';
+import { InviteButton } from '@/components/InviteButton';
 import { useWallet } from '@/hooks/use-wallet';
 import { loadKitties } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
@@ -32,12 +34,19 @@ export default function HomeRoute() {
           <h1 className="text-2xl font-semibold">Your group pots</h1>
           <p className="mt-1 text-sm text-[var(--color-muted)]">Chip in. Cash out together.</p>
         </div>
-        {isConnected && address ? (
-          <MemberAvatar address={address} size="sm" />
-        ) : (
-          <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {isConnected && address ? (
+            <>
+              <InviteButton variant="pill" />
+              <MemberAvatar address={address} size="sm" />
+            </>
+          ) : (
+            <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>
+          )}
+        </div>
       </header>
+
+      <InviterBanner selfAddress={address} />
 
       <Link
         to="/kitty/new"

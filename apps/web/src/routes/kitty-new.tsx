@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
+import { getInviter } from '@/lib/inviter';
 import { saveKitty } from '@/lib/storage';
 import { buildCreateKittyTx } from '@/lib/tx-builders';
 import { shortAddress } from '@/lib/utils';
@@ -39,10 +40,16 @@ export default function KittyNewRoute() {
   const { address, isConnected, sendTransactions } = useWallet();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState<FormState>(() => ({
-    ...DEFAULTS,
-    memberInputs: address ? [address, '', ''] : ['', '', ''],
-  }));
+  const [form, setForm] = useState<FormState>(() => {
+    const inviter = getInviter();
+    const seed: string[] = [];
+    if (address) seed.push(address);
+    if (inviter && (!address || inviter.toLowerCase() !== address.toLowerCase())) {
+      seed.push(inviter);
+    }
+    while (seed.length < 3) seed.push('');
+    return { ...DEFAULTS, memberInputs: seed };
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const factoryReady = Boolean(CIRCLES_CONFIG.kittyFactoryAddress);
