@@ -258,15 +258,7 @@ export default function KittyNewRoute() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-[var(--radius-card)] bg-[var(--color-accent-soft)] p-3">
-              <p className="text-xs text-[color-mix(in_oklab,var(--color-accent),black_20%)]">
-                Need a member's Safe address? Share this link — they'll see a "Send my address
-                back" button on their home.
-              </p>
-              <div className="mt-2">
-                <InviteButton variant="primary" label="Invite a friend" />
-              </div>
-            </div>
+            <InviteButton variant="primary" label="Invite a friend" />
             <div className="flex flex-col gap-2">
               {form.memberInputs.map((value, idx) => {
                 const isSelf = address && value.toLowerCase() === address.toLowerCase();
