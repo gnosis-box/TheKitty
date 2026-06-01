@@ -924,23 +924,6 @@ contract KittyGovernanceTest is Test {
         assertEq(t.staked(charlie), charlieStakeBefore);
     }
 
-    function test_slash_oneDefaulter_burnsAndCovers() public {
-        KittyGovernance t = _activateStakeTontine(50e18, 50e18);
-        // alice + charlie deposit round 0, bob skips.
-        hub.fakeDepositTo(address(t), alice, 50e18);
-        hub.fakeDepositTo(address(t), charlie, 50e18);
-        // bob: deposited == 0, expected at round 0 = 50.
-        vm.warp(t.nextClaimAt());
-
-        vm.prank(alice);
-        t.claimRound();
-
-        // bob's stake should be slashed by 2 * 50 = 100, but his stake is 50.
-        // That means TontineBankrupt would have reverted earlier. Let's use a
-        // big-enough stake to actually allow the slash.
-        assertTrue(false, "should not reach: scenario rigged for revert path");
-    }
-
     function test_slash_oneDefaulter_withSufficientStake() public {
         // Stake = 200 so we can afford the 100-CRC penalty (2x shortfall).
         KittyGovernance t = _activateStakeTontine(50e18, 200e18);

@@ -215,4 +215,18 @@ contract KittyFactoryTest is Test {
         // First claimer is the first listed member (alice).
         assertEq(gov.currentClaimer(), alice);
     }
+
+    function test_createStakeTontineKitty_endToEnd() public {
+        KittyFactory.KittyArgs memory k = _tontineKittyArgs();
+        k.tontine.stakeAmount = 20e18;
+        vm.prank(creator);
+        (, address governance) = factory.createKitty(_groupArgs(), k);
+
+        KittyGovernance gov = KittyGovernance(governance);
+        assertTrue(gov.tontineMode());
+        assertEq(gov.stakeAmount(), 20e18);
+        // Stake-enabled kitties start in Setup, not Active.
+        assertEq(uint8(gov.phase()), uint8(KittyGovernance.Phase.Setup));
+        assertEq(gov.stakedMemberCount(), 0);
+    }
 }
