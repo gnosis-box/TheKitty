@@ -21,6 +21,8 @@ export const kittyGovernanceAbi = [
           { name: 'roundDuration', type: 'uint32' },
           { name: 'roundContribution', type: 'uint128' },
           { name: 'firstClaimAt', type: 'uint32' },
+          { name: 'cycleRounds', type: 'uint32' },
+          { name: 'stakeAmount', type: 'uint128' },
         ],
       },
     ],
@@ -71,6 +73,20 @@ export const kittyGovernanceAbi = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'depositStake',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'withdrawStake',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
 
   // ── views ──────────────────────────────────────────────────────────────────
   { type: 'function', name: 'hub', inputs: [], outputs: [{ type: 'address' }], stateMutability: 'view' },
@@ -86,6 +102,24 @@ export const kittyGovernanceAbi = [
   { type: 'function', name: 'nextClaimAt', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
   { type: 'function', name: 'currentClaimer', inputs: [], outputs: [{ type: 'address' }], stateMutability: 'view' },
   { type: 'function', name: 'roundPayout', inputs: [], outputs: [{ type: 'uint128' }], stateMutability: 'view' },
+  { type: 'function', name: 'cycleRounds', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  { type: 'function', name: 'stakeAmount', inputs: [], outputs: [{ type: 'uint128' }], stateMutability: 'view' },
+  { type: 'function', name: 'phase', inputs: [], outputs: [{ type: 'uint8' }], stateMutability: 'view' },
+  { type: 'function', name: 'stakedMemberCount', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  {
+    type: 'function',
+    name: 'staked',
+    inputs: [{ type: 'address' }],
+    outputs: [{ type: 'uint128' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'hasStaked',
+    inputs: [{ type: 'address' }],
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'view',
+  },
   {
     type: 'function',
     name: 'isMember',
@@ -236,6 +270,51 @@ export const kittyGovernanceAbi = [
     ],
     anonymous: false,
   },
+  {
+    type: 'event',
+    name: 'StakeRequired',
+    inputs: [
+      { indexed: false, name: 'stakeAmount', type: 'uint128' },
+      { indexed: false, name: 'cycleRounds', type: 'uint32' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'StakeDeposited',
+    inputs: [
+      { indexed: true, name: 'member', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint128' },
+      { indexed: false, name: 'stakedSoFar', type: 'uint32' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'PhaseChanged',
+    inputs: [{ indexed: false, name: 'newPhase', type: 'uint8' }],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'MemberSlashed',
+    inputs: [
+      { indexed: true, name: 'round', type: 'uint32' },
+      { indexed: true, name: 'member', type: 'address' },
+      { indexed: false, name: 'shortfall', type: 'uint128' },
+      { indexed: false, name: 'penalty', type: 'uint128' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'StakeRefunded',
+    inputs: [
+      { indexed: true, name: 'member', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint128' },
+    ],
+    anonymous: false,
+  },
 
   // ── errors ─────────────────────────────────────────────────────────────────
   { type: 'error', name: 'NotMember', inputs: [] },
@@ -258,6 +337,12 @@ export const kittyGovernanceAbi = [
   { type: 'error', name: 'BadTontineParams', inputs: [] },
   { type: 'error', name: 'RoundNotReady', inputs: [] },
   { type: 'error', name: 'NotYourTurn', inputs: [] },
+  { type: 'error', name: 'NotInSetup', inputs: [] },
+  { type: 'error', name: 'NotActive', inputs: [] },
+  { type: 'error', name: 'AlreadyStaked', inputs: [] },
+  { type: 'error', name: 'NoStakeMode', inputs: [] },
+  { type: 'error', name: 'CycleAlreadyComplete', inputs: [] },
+  { type: 'error', name: 'TontineBankrupt', inputs: [] },
   // Inherited from OpenZeppelin ReentrancyGuard / SafeCast.
   { type: 'error', name: 'ReentrancyGuardReentrantCall', inputs: [] },
   {

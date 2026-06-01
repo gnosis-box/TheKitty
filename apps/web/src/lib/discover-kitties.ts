@@ -43,17 +43,32 @@ export async function discoverKittiesForMember(viewer: Address): Promise<KittyRe
     matching.map(async (e) => {
       const gov = e.args.governance as Address;
       try {
-        const [tontineMode, roundDuration, roundContribution] = await client.multicall({
+        const [
+          tontineMode,
+          roundDuration,
+          roundContribution,
+          cycleRounds,
+          stakeAmount,
+        ] = await client.multicall({
           contracts: [
             { abi: kittyGovernanceAbi, address: gov, functionName: 'tontineMode' },
             { abi: kittyGovernanceAbi, address: gov, functionName: 'roundDuration' },
             { abi: kittyGovernanceAbi, address: gov, functionName: 'roundContribution' },
+            { abi: kittyGovernanceAbi, address: gov, functionName: 'cycleRounds' },
+            { abi: kittyGovernanceAbi, address: gov, functionName: 'stakeAmount' },
           ],
           allowFailure: false,
         });
-        return { gov, tontineMode, roundDuration, roundContribution };
+        return { gov, tontineMode, roundDuration, roundContribution, cycleRounds, stakeAmount };
       } catch {
-        return { gov, tontineMode: false, roundDuration: 0, roundContribution: 0n };
+        return {
+          gov,
+          tontineMode: false,
+          roundDuration: 0,
+          roundContribution: 0n,
+          cycleRounds: 0,
+          stakeAmount: 0n,
+        };
       }
     }),
   );
@@ -80,6 +95,8 @@ export async function discoverKittiesForMember(viewer: Address): Promise<KittyRe
         ? {
             roundContribution: (enrichment?.roundContribution ?? 0n).toString(),
             roundDuration: Number(enrichment?.roundDuration ?? 0),
+            cycleRounds: Number(enrichment?.cycleRounds ?? 0),
+            stakeAmount: (enrichment?.stakeAmount ?? 0n).toString(),
           }
         : {}),
     };

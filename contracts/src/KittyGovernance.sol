@@ -81,6 +81,41 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     uint32 public immutable roundDuration;
     uint128 public immutable roundContribution;
 
+    /// @notice Total rounds in one full cycle. Defaults to memberCount but
+    ///         can be a multiple if the creator wants multiple full
+    ///         rotations before stakes refund.
+    uint32 public immutable cycleRounds;
+
+    /// @notice Penalty stake every member commits at join time. 0 disables
+    ///         the stake mechanism entirely (legacy "honor system" mode).
+    ///         When > 0, the kitty stays in Phase.Setup until every member
+    ///         has called depositStake(), then transitions to Phase.Active
+    ///         and round 0 can be claimed.
+    uint128 public immutable stakeAmount;
+
+    /// @notice Lifecycle phase of the kitty.
+    ///   Setup    — stake-mode kitties stay here until all stakes are in.
+    ///              For stakeAmount == 0 kitties the constructor jumps
+    ///              straight to Active.
+    ///   Active   — claimRound / propose / smallSpend / deposit all allowed.
+    ///   Complete — cycleRounds claims have been settled. Members can pull
+    ///              their remaining stake back via withdrawStake().
+    enum Phase {
+        Setup,
+        Active,
+        Complete
+    }
+    Phase public phase;
+
+    /// @notice Per-member stake balance. Decreases when slashing covers a
+    ///         shortfall on a round; refundable when the kitty enters
+    ///         Phase.Complete and the member was honest.
+    mapping(address => uint128) public staked;
+    mapping(address => bool) public hasStaked;
+    /// @notice Number of members who have called depositStake. Used to
+    ///         decide the Setup -> Active transition.
+    uint32 public stakedMemberCount;
+
     /// @notice Index of the next round to be claimed (0-based, no wrap-around).
     uint32 public currentRound;
     /// @notice Earliest timestamp at which the current claimer can call
@@ -106,16 +141,20 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
 
     /// @notice Tontine configuration passed to the constructor.
     /// @dev    `enabled == false` disables the rotating-savings path entirely;
-    ///         the other fields must be zero in that case. When enabled, both
-    ///         `roundDuration` and `roundContribution` must be non-zero, and
-    ///         `firstClaimAt` sets when round 0 becomes claimable (use
-    ///         `block.timestamp` for "immediately" or any future timestamp
-    ///         for a delayed start).
+    ///         the other fields must be zero in that case. When enabled,
+    ///         `roundDuration`, `roundContribution`, and `cycleRounds` must be
+    ///         non-zero, and `firstClaimAt` sets when round 0 becomes
+    ///         claimable (use `block.timestamp` for "immediately" or any
+    ///         future timestamp for a delayed start). `stakeAmount` is the
+    ///         per-member penalty stake — set to 0 to disable the stake
+    ///         mechanism entirely.
     struct TontineConfig {
         bool enabled;
         uint32 roundDuration;
         uint128 roundContribution;
         uint32 firstClaimAt;
+        uint32 cycleRounds;
+        uint128 stakeAmount;
     }
 
     Proposal[] private _proposals;
@@ -123,6 +162,16 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
 
     event KittyInitialized(address indexed group, address[] members);
     event TontineInitialized(uint32 roundDuration, uint128 roundContribution, uint32 firstClaimAt);
+    event StakeRequired(uint128 stakeAmount, uint32 cycleRounds);
+    event StakeDeposited(address indexed member, uint128 amount, uint32 stakedSoFar);
+    event PhaseChanged(Phase newPhase);
+    event MemberSlashed(
+        uint32 indexed round,
+        address indexed member,
+        uint128 shortfall,
+        uint128 penalty
+    );
+    event StakeRefunded(address indexed member, uint128 amount);
     event RoundClaimed(
         uint32 indexed round,
         address indexed claimer,
@@ -167,6 +216,12 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     error BadTontineParams();
     error RoundNotReady();
     error NotYourTurn();
+    error NotInSetup();
+    error NotActive();
+    error AlreadyStaked();
+    error NoStakeMode();
+    error CycleAlreadyComplete();
+    error TontineBankrupt();
 
     modifier onlyMember() {
         if (!isMember[msg.sender]) revert NotMember();
@@ -193,11 +248,14 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
             }
             // slither-disable-next-line timestamp
             if (_tontine.firstClaimAt < block.timestamp) revert BadTontineParams();
+            if (_tontine.cycleRounds == 0) revert BadTontineParams();
         } else {
             if (
                 _tontine.roundDuration != 0
                     || _tontine.roundContribution != 0
                     || _tontine.firstClaimAt != 0
+                    || _tontine.cycleRounds != 0
+                    || _tontine.stakeAmount != 0
             ) revert BadTontineParams();
         }
 
@@ -211,7 +269,17 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         tontineMode = _tontine.enabled;
         roundDuration = _tontine.roundDuration;
         roundContribution = _tontine.roundContribution;
+        cycleRounds = _tontine.cycleRounds;
+        stakeAmount = _tontine.stakeAmount;
         nextClaimAt = _tontine.firstClaimAt;
+
+        // Stake-enabled tontines start in Setup and wait for every member
+        // to stake. Honor-system kitties (stakeAmount == 0) skip Setup.
+        if (_tontine.enabled && _tontine.stakeAmount > 0) {
+            phase = Phase.Setup;
+        } else {
+            phase = Phase.Active;
+        }
 
         for (uint256 i = 0; i < members_.length; i++) {
             address m = members_[i];
@@ -228,7 +296,55 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
                 _tontine.roundContribution,
                 _tontine.firstClaimAt
             );
+            if (_tontine.stakeAmount > 0) {
+                emit StakeRequired(_tontine.stakeAmount, _tontine.cycleRounds);
+            }
         }
+    }
+
+    // ── stake mechanism ─────────────────────────────────────────────────────
+
+    /// @notice A member calls this once in Setup to commit their penalty
+    ///         stake. Funding is identical to a regular deposit: the member
+    ///         either bundles `Hub.groupMint + safeTransferFrom`, or the
+    ///         caller bundles a single tx via setApprovalForAll (handled
+    ///         off-contract). This entrypoint just records that the stake
+    ///         was received and flips Setup -> Active when everyone is in.
+    /// @dev    Must be called AFTER the actual ERC-1155 transfer of
+    ///         `stakeAmount` pot tokens into this contract. The transfer
+    ///         already added to `deposited[msg.sender]` via the receiver
+    ///         hook; we re-account it into `staked[msg.sender]` so the
+    ///         stake isn't counted as a round contribution.
+    function depositStake() external onlyMember {
+        if (stakeAmount == 0) revert NoStakeMode();
+        if (phase != Phase.Setup) revert NotInSetup();
+        if (hasStaked[msg.sender]) revert AlreadyStaked();
+        if (deposited[msg.sender] < stakeAmount) revert TontineBankrupt();
+
+        // Reclassify stakeAmount from deposit -> stake. The pot balance
+        // doesn't change; the per-member accounting does.
+        deposited[msg.sender] -= stakeAmount;
+        totalDeposited -= stakeAmount;
+        staked[msg.sender] = stakeAmount;
+        hasStaked[msg.sender] = true;
+        stakedMemberCount += 1;
+
+        emit StakeDeposited(msg.sender, stakeAmount, stakedMemberCount);
+        if (stakedMemberCount == _members.length) {
+            phase = Phase.Active;
+            emit PhaseChanged(Phase.Active);
+        }
+    }
+
+    /// @notice After the cycle is complete, each member can pull back their
+    ///         remaining stake (whatever wasn't slashed for defaults).
+    function withdrawStake() external onlyMember nonReentrant {
+        if (phase != Phase.Complete) revert NotActive();
+        uint128 amount = staked[msg.sender];
+        if (amount == 0) return;
+        staked[msg.sender] = 0;
+        emit StakeRefunded(msg.sender, amount);
+        _transferOut(msg.sender, amount);
     }
 
     // ── ERC-1155 receiver ───────────────────────────────────────────────────
@@ -375,6 +491,8 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     ///         enough collateral is in the pot.
     function claimRound() external onlyMember nonReentrant {
         if (!tontineMode) revert NotTontine();
+        if (phase == Phase.Setup) revert NotInSetup();
+        if (phase == Phase.Complete) revert CycleAlreadyComplete();
         // slither-disable-next-line timestamp
         if (block.timestamp < nextClaimAt) revert RoundNotReady();
 
@@ -382,14 +500,55 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         address claimer = _members[round % _members.length];
         if (msg.sender != claimer) revert NotYourTurn();
 
+        // Slash defaulters before paying out. The expected cumulative
+        // deposit per member at the time round R is claimed is
+        // `roundContribution * (R + 1)` — they've paid into the pot for
+        // rounds 0..R inclusive. Anyone short gets the gap covered from
+        // their stake at a 2x penalty.
+        if (stakeAmount > 0) {
+            _detectAndSlash(round);
+        }
+
         uint128 payout = roundPayout();
         uint32 nextAt = uint32(block.timestamp) + roundDuration;
 
         currentRound = round + 1;
         nextClaimAt = nextAt;
+        if (currentRound == cycleRounds) {
+            phase = Phase.Complete;
+            emit PhaseChanged(Phase.Complete);
+        }
 
         emit RoundClaimed(round, claimer, payout, nextAt);
         _transferOut(claimer, payout);
+    }
+
+    /// @dev For each member, compare their cumulative deposits to the
+    ///      expected mark for round R. If short, slash 2x the shortfall
+    ///      from their stake and credit the shortfall into `deposited` so
+    ///      the next `roundPayout` computation has the full pot.
+    ///      Reverts TontineBankrupt if a member's stake can't cover.
+    function _detectAndSlash(uint32 round) internal {
+        uint256 expected = uint256(roundContribution) * (uint256(round) + 1);
+        uint256 memberCount = _members.length;
+        for (uint256 i = 0; i < memberCount; i++) {
+            address m = _members[i];
+            uint256 dep = deposited[m];
+            if (dep >= expected) continue;
+
+            uint128 shortfall = uint128(expected - dep);
+            uint128 penalty = shortfall * 2;
+            if (penalty > staked[m]) revert TontineBankrupt();
+
+            staked[m] -= penalty;
+            // The shortfall is paid into the pot; the extra penalty
+            // (shortfall * 1) is forfeit and stays in the contract as
+            // "bonus" that members share at withdraw / next round.
+            deposited[m] += shortfall;
+            totalDeposited += shortfall;
+
+            emit MemberSlashed(round, m, shortfall, penalty);
+        }
     }
 
     /// @dev Transfers pot tokens out of THIS contract (the custodian), not the group.

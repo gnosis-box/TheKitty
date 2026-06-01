@@ -33,7 +33,7 @@ A second mode (**free pot**) is available for groups that want a shared treasury
 ## Architecture
 
 ```
-User Safe (Circles human)
+User wallet (Circles human)
    │
    │ via @aboutcircles/miniapp-sdk → sendTransactions([...])
    ▼
@@ -52,8 +52,9 @@ KittyFactory  ──── createKitty() ─────► BaseGroupFactory →
 
 ## Deployed (Gnosis Chain, chainId 100)
 
-- KittyFactory: [`0x880E213224Ce5B6B8a01A21D4318819c67146533`](https://gnosisscan.io/address/0x880E213224Ce5B6B8a01A21D4318819c67146533) — supports both free pot and rotating tontine modes.
-- Previous KittyFactory (free pot only, no `claimRound`): [`0x21539cb2b5a80C88a0D05E631662972589bD010A`](https://gnosisscan.io/address/0x21539cb2b5a80C88a0D05E631662972589bD010A) — kitties created via this factory still work for deposit / propose / execute / smallSpend.
+- KittyFactory v3: [`0xa6f38d8613F8612Fcfdf89707B479ea4ef554439`](https://gnosisscan.io/address/0xa6f38d8613F8612Fcfdf89707B479ea4ef554439) — adds stake mode + round-zero setup gate + slash mechanism on top of v2's tontine support.
+- KittyFactory v2: [`0x880E213224Ce5B6B8a01A21D4318819c67146533`](https://gnosisscan.io/address/0x880E213224Ce5B6B8a01A21D4318819c67146533) — first tontine release. Kitties created here still work for claim / propose / execute, no stake mode.
+- KittyFactory v1: [`0x21539cb2b5a80C88a0D05E631662972589bD010A`](https://gnosisscan.io/address/0x21539cb2b5a80C88a0D05E631662972589bD010A) — free pot only, no tontine.
 - Built on Circles V2 Hub `0xc12C1E50ABB450d6205Ea2C3Fa861b3B834d13e8` + BaseGroupFactory `0xD0B5Bd9962197BEaC4cbA24244ec3587f19Bd06d`.
 
 ## Try it
@@ -67,7 +68,7 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 
 - **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
 - **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
-- **Contracts** — Foundry, Solidity 0.8.24, 61 tests passing. The free-pot core passed a Trail of Bits review; the tontine extension is post-audit and lives on top.
+- **Contracts** — Foundry, Solidity 0.8.24, 77 tests passing. The free-pot core passed a Trail of Bits review; the tontine + stake extensions are post-audit and live on top.
 - **Hosting** — Coolify (Docker + Caddy)
 
 ## License

@@ -25,7 +25,11 @@ import { InviteButton } from '@/components/InviteButton';
 import { useHistory } from '@/hooks/use-history';
 import { useWallet } from '@/hooks/use-wallet';
 import { useKitty } from '@/hooks/use-kitty';
-import { buildClaimRoundTx } from '@/lib/tx-builders';
+import {
+  buildClaimRoundTx,
+  buildDepositStakeTx,
+  buildWithdrawStakeTx,
+} from '@/lib/tx-builders';
 import { readPerMemberTrust, type TontineState } from '@/lib/kitty-reader';
 import { TrustChip } from '@/components/pot/TrustChip';
 import { formatCrc, shortAddress } from '@/lib/utils';
@@ -158,7 +162,17 @@ export default function KittyDetailRoute() {
             </CardContent>
           </Card>
 
-          {state.tontine.enabled && (
+          {state.tontine.enabled && state.tontine.stakeAmount > 0n && (
+            <StakePhaseCard
+              governance={governance}
+              tontine={state.tontine}
+              members={state.members}
+              selfAddress={address}
+              onChanged={refreshAll}
+            />
+          )}
+
+          {state.tontine.enabled && state.tontine.phase !== 'setup' && (
             <TontineCard
               governance={governance}
               tontine={state.tontine}
@@ -391,6 +405,135 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="font-mono text-base">{value}</p>
     </div>
   );
+}
+
+interface StakePhaseCardProps {
+  governance: Address;
+  tontine: TontineState;
+  members: Address[];
+  selfAddress: Address | null;
+  onChanged: () => void;
+}
+
+/// Surfaces the kitty's lifecycle for stake-mode tontines:
+///   - Setup: a "waiting for X/N stakes" banner + a primary "Stake N CRC"
+///     CTA when the viewer is a member who hasn't staked yet
+///   - Complete: a "cycle done" banner + a "Withdraw stake" CTA if the
+///     viewer has a remaining stake balance
+///   - Active: nothing — the TontineCard takes over
+function StakePhaseCard({ governance, tontine, members, selfAddress, onChanged }: StakePhaseCardProps) {
+  const { sendTransactions } = useWallet();
+  const [busy, setBusy] = useState(false);
+
+  const me = selfAddress?.toLowerCase();
+  const isMember = me != null && members.some((m) => m.toLowerCase() === me);
+  const meHasStaked = me != null && Boolean(tontine.hasStaked[me]);
+  const myStake = me != null ? tontine.staked[me] ?? 0n : 0n;
+  const remaining = members.length - tontine.stakedMemberCount;
+
+  async function onConfirmStake() {
+    if (!selfAddress) return;
+    setBusy(true);
+    try {
+      toast.loading('Confirming stake…', { id: 'kitty-stake' });
+      const [tx] = await sendTransactions([buildDepositStakeTx({ governance })]);
+      if (!tx) throw new Error('Host returned no tx hash');
+      toast.success('Stake locked ✓', { id: 'kitty-stake' });
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Stake failed', { id: 'kitty-stake' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onWithdraw() {
+    setBusy(true);
+    try {
+      toast.loading('Withdrawing stake…', { id: 'kitty-stake' });
+      const [tx] = await sendTransactions([buildWithdrawStakeTx({ governance })]);
+      if (!tx) throw new Error('Host returned no tx hash');
+      toast.success('Stake withdrawn ✓', { id: 'kitty-stake' });
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Withdraw failed', { id: 'kitty-stake' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (tontine.phase === 'setup') {
+    return (
+      <Card className="border-[var(--color-accent)]/40 bg-[var(--color-accent-soft)]">
+        <CardHeader>
+          <CardTitle>Setup phase</CardTitle>
+          <CardDescription>
+            Round 0 opens once every member has locked their {formatCrc(tontine.stakeAmount)} CRC
+            penalty stake. {tontine.stakedMemberCount} / {members.length} staked,{' '}
+            <strong>{remaining} to go</strong>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isMember && !meHasStaked ? (
+            <>
+              <p className="mb-2 text-xs text-[var(--color-muted)]">
+                First deposit your stake from the Deposit page (amount must match{' '}
+                {formatCrc(tontine.stakeAmount)} CRC), then tap below to lock it in.
+              </p>
+              <Button
+                type="button"
+                size="lg"
+                onClick={onConfirmStake}
+                disabled={busy}
+                className="w-full"
+              >
+                {busy ? 'Confirming…' : `Lock my ${formatCrc(tontine.stakeAmount)} CRC stake`}
+              </Button>
+            </>
+          ) : isMember && meHasStaked ? (
+            <p className="text-sm">
+              You're staked. Waiting on {remaining} more member{remaining === 1 ? '' : 's'}.
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--color-muted)]">
+              Only members of this kitty can stake.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (tontine.phase === 'complete') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Cycle complete</CardTitle>
+          <CardDescription>
+            Every round has paid out. Members can pull back whatever stake
+            wasn't slashed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isMember && myStake > 0n ? (
+            <Button
+              type="button"
+              size="lg"
+              onClick={onWithdraw}
+              disabled={busy}
+              className="w-full"
+            >
+              {busy ? 'Withdrawing…' : `Withdraw ${formatCrc(myStake)} CRC stake`}
+            </Button>
+          ) : isMember ? (
+            <p className="text-sm">Your stake was fully slashed. Nothing to withdraw.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return null;
 }
 
 interface TontineCardProps {
