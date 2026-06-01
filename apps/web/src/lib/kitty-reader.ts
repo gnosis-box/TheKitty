@@ -191,6 +191,41 @@ export async function readHasVoted(args: {
   });
 }
 
+/// Count how many of `members` the viewer's avatar currently trusts via the
+/// Hub V2. Used by the home to surface a "X in your trust graph" hint on
+/// each kitty card — a small signal that the kitty isn't strangers, it's
+/// people the viewer already vouches for.
+///
+/// Implementation: a single multicall on Hub.isTrusted(viewer, member) for
+/// each unique member. Returns 0 on RPC failure rather than blowing up the
+/// card render.
+export async function readTrustedCount(
+  viewer: Address,
+  members: readonly Address[],
+): Promise<number> {
+  if (members.length === 0) return 0;
+  const client = getPublicClient();
+  const unique = Array.from(new Set(members.map((m) => m.toLowerCase())));
+  try {
+    const results = await client.multicall({
+      contracts: unique.map((m) => ({
+        abi: hubV2Abi,
+        address: CIRCLES_CONFIG.v2HubAddress,
+        functionName: 'isTrusted' as const,
+        args: [viewer, m as Address] as const,
+      })),
+      allowFailure: true,
+    });
+    let count = 0;
+    for (const r of results) {
+      if (r.status === 'success' && r.result === true) count += 1;
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
 /// Read the user's personal CRC balance (id = toTokenId(userAvatar)).
 /// Useful for the deposit page to show available funds.
 export async function readPersonalCrcBalance(userAvatar: Address): Promise<bigint> {
