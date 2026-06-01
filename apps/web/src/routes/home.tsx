@@ -12,7 +12,8 @@ import { InviteButton } from '@/components/InviteButton';
 import { Logo } from '@/components/Logo';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { useWallet } from '@/hooks/use-wallet';
-import { loadKitties } from '@/lib/storage';
+import { discoverKittiesForMember, mergeDiscoveredKitties } from '@/lib/discover-kitties';
+import { loadKitties, saveKitty } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
 
 export default function HomeRoute() {
@@ -24,7 +25,35 @@ export default function HomeRoute() {
       setKitties([]);
       return;
     }
-    setKitties(loadKitties(address));
+    // Phase 1: paint immediately from the local cache so the page never
+    // shows a flash of empty state for known kitties.
+    const local = loadKitties(address);
+    setKitties(local);
+
+    // Phase 2: discover from chain in the background. Any kitty where the
+    // viewer was listed as a member at creation time gets added to the list
+    // and persisted to localStorage so we don't rescan from scratch next
+    // time. Failures stay silent — discovery is a nice-to-have.
+    let cancelled = false;
+    (async () => {
+      try {
+        const discovered = await discoverKittiesForMember(address);
+        if (cancelled || discovered.length === 0) return;
+        const merged = mergeDiscoveredKitties(local, discovered);
+        if (merged.length === local.length) return;
+        // Persist the newly discovered ones so future loads paint them in
+        // Phase 1 directly.
+        for (const k of merged.slice(local.length)) {
+          saveKitty(address, k);
+        }
+        setKitties(merged);
+      } catch {
+        // ignore — local cache is still valid
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [address]);
 
   // Pick the header copy based on what the user actually has. If they only
