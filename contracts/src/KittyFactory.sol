@@ -81,6 +81,7 @@ contract KittyFactory is ReentrancyGuard {
         uint128 smallTxThreshold;
         uint32 votingPeriod;
         uint96 trustExpiry;
+        KittyGovernance.TontineConfig tontine;
     }
 
     /// @notice Create a brand-new kitty in one tx.
@@ -123,7 +124,8 @@ contract KittyFactory is ReentrancyGuard {
                 k.members,
                 k.quorumPercent,
                 k.smallTxThreshold,
-                k.votingPeriod
+                k.votingPeriod,
+                k.tontine
             )
         );
 

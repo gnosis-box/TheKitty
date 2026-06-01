@@ -4,6 +4,24 @@ import { kittyGovernanceAbi } from './abi/kitty-governance';
 import { getPublicClient } from './public-client';
 import type { Address, ProposalView } from '@/types/kitty';
 
+export interface TontineState {
+  /// True if this kitty was created in rotating-savings mode.
+  enabled: boolean;
+  /// Seconds between rounds. 0 when disabled.
+  roundDuration: number;
+  /// Raw uint128 amount each member commits per round. 0 when disabled.
+  roundContribution: bigint;
+  /// 0-indexed round number to be claimed next. 0 when disabled.
+  currentRound: number;
+  /// Unix timestamp (seconds) at which the current round becomes claimable.
+  /// 0 when disabled.
+  nextClaimAt: number;
+  /// Address whose turn it is. Zero address when disabled.
+  currentClaimer: Address;
+  /// Computed payout per round = roundContribution * memberCount.
+  roundPayout: bigint;
+}
+
 export interface KittyState {
   governance: Address;
   groupAvatar: Address;
@@ -19,7 +37,10 @@ export interface KittyState {
   /// Per-member contribution tracker (raw uint128 units).
   deposits: Record<string, bigint>;
   proposals: ProposalView[];
+  tontine: TontineState;
 }
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address;
 
 /// Batched on-chain read of everything the detail page needs.
 ///
@@ -41,6 +62,11 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
     smallTxThreshold,
     quorumPercent,
     votingPeriod,
+    tontineMode,
+    roundDuration,
+    roundContribution,
+    currentRound,
+    nextClaimAt,
   ] = await client.multicall({
     contracts: [
       { ...base, functionName: 'getMembers' },
@@ -51,6 +77,11 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
       { ...base, functionName: 'smallTxThreshold' },
       { ...base, functionName: 'quorumPercent' },
       { ...base, functionName: 'votingPeriod' },
+      { ...base, functionName: 'tontineMode' },
+      { ...base, functionName: 'roundDuration' },
+      { ...base, functionName: 'roundContribution' },
+      { ...base, functionName: 'currentRound' },
+      { ...base, functionName: 'nextClaimAt' },
     ],
     allowFailure: false,
   });
@@ -105,6 +136,20 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
     }),
   );
 
+  const tontineEnabled = Boolean(tontineMode);
+  const contribution = (roundContribution as bigint) ?? 0n;
+  const tontine: TontineState = {
+    enabled: tontineEnabled,
+    roundDuration: Number(roundDuration),
+    roundContribution: contribution,
+    currentRound: Number(currentRound),
+    nextClaimAt: Number(nextClaimAt),
+    currentClaimer: tontineEnabled
+      ? (members[Number(currentRound) % members.length] ?? ZERO_ADDRESS)
+      : ZERO_ADDRESS,
+    roundPayout: tontineEnabled ? contribution * BigInt(members.length) : 0n,
+  };
+
   return {
     governance,
     groupAvatar: groupAvatar as Address,
@@ -117,6 +162,7 @@ export async function readKittyState(governance: Address): Promise<KittyState> {
     potBalance: potBalance as bigint,
     deposits,
     proposals,
+    tontine,
   };
 }
 

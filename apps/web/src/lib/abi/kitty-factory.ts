@@ -28,6 +28,16 @@ export const kittyFactoryAbi = [
           { name: 'smallTxThreshold', type: 'uint128' },
           { name: 'votingPeriod', type: 'uint32' },
           { name: 'trustExpiry', type: 'uint96' },
+          {
+            name: 'tontine',
+            type: 'tuple',
+            components: [
+              { name: 'enabled', type: 'bool' },
+              { name: 'roundDuration', type: 'uint32' },
+              { name: 'roundContribution', type: 'uint128' },
+              { name: 'firstClaimAt', type: 'uint32' },
+            ],
+          },
         ],
       },
     ],

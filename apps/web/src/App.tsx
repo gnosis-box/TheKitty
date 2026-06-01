@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import HomeRoute from './routes/home';
 import KittyDepositRoute from './routes/kitty-deposit';
 import KittyDetailRoute from './routes/kitty-detail';
+import KittyJoinRoute from './routes/kitty-join';
 import KittyNewRoute from './routes/kitty-new';
 import KittyProposeRoute from './routes/kitty-propose';
 import { captureInviterFromUrl } from './lib/inviter';
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/" element={<HomeRoute />} />
         <Route path="/kitty/new" element={<KittyNewRoute />} />
         <Route path="/kitty/:id" element={<KittyDetailRoute />} />
+        <Route path="/kitty/:id/join" element={<KittyJoinRoute />} />
         <Route path="/kitty/:id/deposit" element={<KittyDepositRoute />} />
         <Route path="/kitty/:id/propose" element={<KittyProposeRoute />} />
         <Route path="*" element={<Navigate to="/" replace />} />

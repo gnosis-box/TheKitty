@@ -13,6 +13,16 @@ export const kittyGovernanceAbi = [
       { name: '_quorumPercent', type: 'uint8' },
       { name: '_smallTxThreshold', type: 'uint128' },
       { name: '_votingPeriod', type: 'uint32' },
+      {
+        name: '_tontine',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', type: 'bool' },
+          { name: 'roundDuration', type: 'uint32' },
+          { name: 'roundContribution', type: 'uint128' },
+          { name: 'firstClaimAt', type: 'uint32' },
+        ],
+      },
     ],
     stateMutability: 'nonpayable',
   },
@@ -54,6 +64,13 @@ export const kittyGovernanceAbi = [
     outputs: [],
     stateMutability: 'nonpayable',
   },
+  {
+    type: 'function',
+    name: 'claimRound',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
 
   // ── views ──────────────────────────────────────────────────────────────────
   { type: 'function', name: 'hub', inputs: [], outputs: [{ type: 'address' }], stateMutability: 'view' },
@@ -62,6 +79,13 @@ export const kittyGovernanceAbi = [
   { type: 'function', name: 'quorumPercent', inputs: [], outputs: [{ type: 'uint8' }], stateMutability: 'view' },
   { type: 'function', name: 'smallTxThreshold', inputs: [], outputs: [{ type: 'uint128' }], stateMutability: 'view' },
   { type: 'function', name: 'votingPeriod', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  { type: 'function', name: 'tontineMode', inputs: [], outputs: [{ type: 'bool' }], stateMutability: 'view' },
+  { type: 'function', name: 'roundDuration', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  { type: 'function', name: 'roundContribution', inputs: [], outputs: [{ type: 'uint128' }], stateMutability: 'view' },
+  { type: 'function', name: 'currentRound', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  { type: 'function', name: 'nextClaimAt', inputs: [], outputs: [{ type: 'uint32' }], stateMutability: 'view' },
+  { type: 'function', name: 'currentClaimer', inputs: [], outputs: [{ type: 'address' }], stateMutability: 'view' },
+  { type: 'function', name: 'roundPayout', inputs: [], outputs: [{ type: 'uint128' }], stateMutability: 'view' },
   {
     type: 'function',
     name: 'isMember',
@@ -191,6 +215,27 @@ export const kittyGovernanceAbi = [
     ],
     anonymous: false,
   },
+  {
+    type: 'event',
+    name: 'TontineInitialized',
+    inputs: [
+      { indexed: false, name: 'roundDuration', type: 'uint32' },
+      { indexed: false, name: 'roundContribution', type: 'uint128' },
+      { indexed: false, name: 'firstClaimAt', type: 'uint32' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'RoundClaimed',
+    inputs: [
+      { indexed: true, name: 'round', type: 'uint32' },
+      { indexed: true, name: 'claimer', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint128' },
+      { indexed: false, name: 'nextClaimAt', type: 'uint32' },
+    ],
+    anonymous: false,
+  },
 
   // ── errors ─────────────────────────────────────────────────────────────────
   { type: 'error', name: 'NotMember', inputs: [] },
@@ -209,6 +254,10 @@ export const kittyGovernanceAbi = [
   { type: 'error', name: 'ZeroAddress', inputs: [] },
   { type: 'error', name: 'DirectMintNotAllowed', inputs: [] },
   { type: 'error', name: 'MemoTooLong', inputs: [] },
+  { type: 'error', name: 'NotTontine', inputs: [] },
+  { type: 'error', name: 'BadTontineParams', inputs: [] },
+  { type: 'error', name: 'RoundNotReady', inputs: [] },
+  { type: 'error', name: 'NotYourTurn', inputs: [] },
   // Inherited from OpenZeppelin ReentrancyGuard / SafeCast.
   { type: 'error', name: 'ReentrancyGuardReentrantCall', inputs: [] },
   {

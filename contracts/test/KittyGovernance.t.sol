@@ -108,6 +108,16 @@ contract KittyGovernanceTest is Test {
     uint128 internal constant SMALL_THRESHOLD = 5e18;
     uint32 internal constant VOTING_PERIOD = 1 days;
 
+    /// Tontine config for the "free pot" mode (rotating savings disabled).
+    function _freePot() internal pure returns (KittyGovernance.TontineConfig memory) {
+        return KittyGovernance.TontineConfig({
+            enabled: false,
+            roundDuration: 0,
+            roundContribution: 0,
+            firstClaimAt: 0
+        });
+    }
+
     function setUp() public {
         hub = new MockHub();
         address[] memory members = new address[](3);
@@ -121,7 +131,8 @@ contract KittyGovernanceTest is Test {
             members,
             QUORUM,
             SMALL_THRESHOLD,
-            VOTING_PERIOD
+            VOTING_PERIOD,
+            _freePot()
         );
     }
 
@@ -149,12 +160,16 @@ contract KittyGovernanceTest is Test {
 
     function test_constructor_rejectsZeroHub() public {
         vm.expectRevert(KittyGovernance.ZeroAddress.selector);
-        new KittyGovernance(address(0), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(
+            address(0), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, _freePot()
+        );
     }
 
     function test_constructor_rejectsZeroGroup() public {
         vm.expectRevert(KittyGovernance.ZeroAddress.selector);
-        new KittyGovernance(address(hub), address(0), _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(
+            address(hub), address(0), _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, _freePot()
+        );
     }
 
     function test_constructor_rejectsZeroMember() public {
@@ -162,29 +177,35 @@ contract KittyGovernanceTest is Test {
         m[0] = alice;
         m[1] = address(0);
         vm.expectRevert(KittyGovernance.ZeroAddress.selector);
-        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, _freePot());
     }
 
     function test_constructor_rejectsZeroQuorum() public {
         vm.expectRevert(KittyGovernance.BadQuorum.selector);
-        new KittyGovernance(address(hub), group, _twoMembers(), 0, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), 0, SMALL_THRESHOLD, VOTING_PERIOD, _freePot()
+        );
     }
 
     function test_constructor_rejectsQuorumAbove100() public {
         vm.expectRevert(KittyGovernance.BadQuorum.selector);
-        new KittyGovernance(address(hub), group, _twoMembers(), 101, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), 101, SMALL_THRESHOLD, VOTING_PERIOD, _freePot()
+        );
     }
 
     function test_constructor_rejectsZeroVotingPeriod() public {
         vm.expectRevert(KittyGovernance.BadVotingPeriod.selector);
-        new KittyGovernance(address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, 0);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, 0, _freePot()
+        );
     }
 
     function test_constructor_rejectsSingleMember() public {
         address[] memory m = new address[](1);
         m[0] = alice;
         vm.expectRevert(KittyGovernance.NotEnoughMembers.selector);
-        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, _freePot());
     }
 
     function test_constructor_rejectsDuplicateMember() public {
@@ -193,7 +214,7 @@ contract KittyGovernanceTest is Test {
         m[1] = bob;
         m[2] = alice;
         vm.expectRevert(KittyGovernance.DuplicateMember.selector);
-        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD);
+        new KittyGovernance(address(hub), group, m, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, _freePot());
     }
 
     // ── ERC-1155 receiver ───────────────────────────────────────────────────
@@ -496,7 +517,8 @@ contract KittyGovernanceTest is Test {
             ms,
             q,
             SMALL_THRESHOLD,
-            VOTING_PERIOD
+            VOTING_PERIOD,
+            _freePot()
         );
 
         // ceil(n*q/100)
@@ -515,6 +537,210 @@ contract KittyGovernanceTest is Test {
         vm.prank(ms[0]);
         k.execute(0);
         assertTrue(k.getProposal(0).executed);
+    }
+
+    // ── tontine ─────────────────────────────────────────────────────────────
+
+    function _tontine(uint128 contribution) internal view returns (KittyGovernance.TontineConfig memory) {
+        return KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 30 days,
+            roundContribution: contribution,
+            firstClaimAt: uint32(block.timestamp + 30 days)
+        });
+    }
+
+    function _newTontine(uint128 contribution) internal returns (KittyGovernance) {
+        address[] memory members = new address[](3);
+        members[0] = alice;
+        members[1] = bob;
+        members[2] = charlie;
+        return new KittyGovernance(
+            address(hub),
+            group,
+            members,
+            QUORUM,
+            SMALL_THRESHOLD,
+            VOTING_PERIOD,
+            _tontine(contribution)
+        );
+    }
+
+    function test_tontine_constructor_setsState() public {
+        KittyGovernance t = _newTontine(50e18);
+        assertTrue(t.tontineMode());
+        assertEq(t.roundDuration(), 30 days);
+        assertEq(t.roundContribution(), 50e18);
+        assertEq(t.currentRound(), 0);
+        assertEq(t.nextClaimAt(), block.timestamp + 30 days);
+        assertEq(t.currentClaimer(), alice);
+        assertEq(t.roundPayout(), 150e18);
+    }
+
+    function test_tontine_disabled_rejectsNonZeroParams() public {
+        KittyGovernance.TontineConfig memory bad = KittyGovernance.TontineConfig({
+            enabled: false,
+            roundDuration: 1 days,
+            roundContribution: 0,
+            firstClaimAt: 0
+        });
+        vm.expectRevert(KittyGovernance.BadTontineParams.selector);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, bad
+        );
+    }
+
+    function test_tontine_enabled_rejectsZeroDuration() public {
+        KittyGovernance.TontineConfig memory bad = KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 0,
+            roundContribution: 50e18,
+            firstClaimAt: uint32(block.timestamp + 1 days)
+        });
+        vm.expectRevert(KittyGovernance.BadTontineParams.selector);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, bad
+        );
+    }
+
+    function test_tontine_enabled_rejectsZeroContribution() public {
+        KittyGovernance.TontineConfig memory bad = KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 1 days,
+            roundContribution: 0,
+            firstClaimAt: uint32(block.timestamp + 1 days)
+        });
+        vm.expectRevert(KittyGovernance.BadTontineParams.selector);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, bad
+        );
+    }
+
+    function test_tontine_enabled_rejectsPastFirstClaim() public {
+        vm.warp(1_000_000);
+        KittyGovernance.TontineConfig memory bad = KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 1 days,
+            roundContribution: 50e18,
+            firstClaimAt: uint32(block.timestamp - 1)
+        });
+        vm.expectRevert(KittyGovernance.BadTontineParams.selector);
+        new KittyGovernance(
+            address(hub), group, _twoMembers(), QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, bad
+        );
+    }
+
+    function test_tontine_claimRound_happyPath() public {
+        KittyGovernance t = _newTontine(50e18);
+        // Fund the pot: each member deposits their round contribution.
+        hub.fakeDepositTo(address(t), alice, 50e18);
+        hub.fakeDepositTo(address(t), bob, 50e18);
+        hub.fakeDepositTo(address(t), charlie, 50e18);
+
+        // Fast-forward to round 0 opening.
+        vm.warp(t.nextClaimAt());
+
+        vm.prank(alice);
+        t.claimRound();
+
+        // alice received 150e18 from the pot custodian.
+        (address from, address to,, uint256 amount) = hub.lastTransfer();
+        assertEq(from, address(t));
+        assertEq(to, alice);
+        assertEq(amount, 150e18);
+
+        // Rotation advanced.
+        assertEq(t.currentRound(), 1);
+        assertEq(t.currentClaimer(), bob);
+        assertEq(t.nextClaimAt(), block.timestamp + 30 days);
+    }
+
+    function test_tontine_claimRound_fullCycleWraps() public {
+        KittyGovernance t = _newTontine(10e18);
+        // Fund the pot generously so 4 rounds can be paid without re-deposits.
+        hub.fakeDepositTo(address(t), alice, 1000e18);
+
+        address[3] memory order = [alice, bob, charlie];
+        for (uint256 r = 0; r < 4; r++) {
+            vm.warp(t.nextClaimAt());
+            vm.prank(order[r % 3]);
+            t.claimRound();
+        }
+        // Cycle wrapped: round 3 was alice again (3 % 3 == 0), now sitting
+        // on round 4 with bob expected next.
+        assertEq(t.currentRound(), 4);
+        assertEq(t.currentClaimer(), bob);
+    }
+
+    function test_tontine_claimRound_notYourTurnReverts() public {
+        KittyGovernance t = _newTontine(50e18);
+        hub.fakeDepositTo(address(t), alice, 150e18);
+        vm.warp(t.nextClaimAt());
+
+        vm.prank(bob); // bob would be round 1, not round 0
+        vm.expectRevert(KittyGovernance.NotYourTurn.selector);
+        t.claimRound();
+    }
+
+    function test_tontine_claimRound_beforeReadyReverts() public {
+        KittyGovernance t = _newTontine(50e18);
+        hub.fakeDepositTo(address(t), alice, 150e18);
+        // do NOT warp — `nextClaimAt` is in the future.
+
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.RoundNotReady.selector);
+        t.claimRound();
+    }
+
+    function test_tontine_claimRound_nonMemberReverts() public {
+        KittyGovernance t = _newTontine(50e18);
+        hub.fakeDepositTo(address(t), alice, 150e18);
+        vm.warp(t.nextClaimAt());
+
+        vm.prank(merchant);
+        vm.expectRevert(KittyGovernance.NotMember.selector);
+        t.claimRound();
+    }
+
+    function test_tontine_claimRound_disabledModeReverts() public {
+        // Default kitty has tontine disabled.
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.NotTontine.selector);
+        kitty.claimRound();
+    }
+
+    function test_tontine_currentClaimer_revertsWhenDisabled() public {
+        vm.expectRevert(KittyGovernance.NotTontine.selector);
+        kitty.currentClaimer();
+    }
+
+    function test_tontine_coexistsWithSmallSpend() public {
+        KittyGovernance t = _newTontine(50e18);
+        // Tontine and free-form spending share the same pot custodian. A
+        // small spend before round 0 opens should still work and just reduce
+        // the pot balance — the tontine state is untouched.
+        hub.fakeDepositTo(address(t), alice, 200e18);
+
+        vm.prank(alice);
+        t.smallSpend(merchant, 5e18, "snack");
+        assertEq(hub.transferCount(), 1);
+        assertEq(t.currentRound(), 0);
+        assertEq(t.nextClaimAt(), block.timestamp + 30 days); // unchanged
+    }
+
+    function test_tontine_coexistsWithPropose() public {
+        KittyGovernance t = _newTontine(50e18);
+        hub.fakeDepositTo(address(t), alice, 500e18);
+
+        vm.prank(alice);
+        uint256 id = t.propose(merchant, 100e18, "off-rotation expense");
+        vm.prank(bob);
+        t.approve(id);
+        vm.prank(alice);
+        t.execute(id);
+
+        // Tontine timing unaffected by the off-cycle spend.
+        assertEq(t.currentRound(), 0);
     }
 
     // ── reentrancy ──────────────────────────────────────────────────────────

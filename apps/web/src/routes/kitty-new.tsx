@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { isAddress, parseUnits } from 'viem';
-import { ArrowLeft, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Plus, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,12 @@ import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { getInviter } from '@/lib/inviter';
 import { saveKitty } from '@/lib/storage';
-import { buildCreateKittyTx } from '@/lib/tx-builders';
+import { buildCreateKittyTx, type TontineInput } from '@/lib/tx-builders';
 import { shortAddress } from '@/lib/utils';
 import { waitForKittyCreated } from '@/lib/wait-for-kitty';
 import type { Address, KittyRef } from '@/types/kitty';
+
+type KittyMode = 'free' | 'tontine';
 
 interface FormState {
   name: string;
@@ -25,6 +27,10 @@ interface FormState {
   quorum: string;
   smallThresholdCrc: string;
   votingHours: string;
+  mode: KittyMode;
+  roundDays: string;
+  roundContributionCrc: string;
+  firstClaimDelayDays: string;
 }
 
 const DEFAULTS: FormState = {
@@ -34,6 +40,10 @@ const DEFAULTS: FormState = {
   quorum: '51',
   smallThresholdCrc: '5',
   votingHours: '24',
+  mode: 'free',
+  roundDays: '30',
+  roundContributionCrc: '50',
+  firstClaimDelayDays: '30',
 };
 
 export default function KittyNewRoute() {
@@ -78,6 +88,17 @@ export default function KittyNewRoute() {
     }));
   }
 
+  /// In tontine mode the order of members is the rotation order — index 0
+  /// claims round 0, etc. Let the user reorder before creating.
+  function swapMembers(i: number, j: number) {
+    setForm((f) => {
+      if (i < 0 || j < 0 || i >= f.memberInputs.length || j >= f.memberInputs.length) return f;
+      const next = [...f.memberInputs];
+      [next[i], next[j]] = [next[j]!, next[i]!];
+      return { ...f, memberInputs: next };
+    });
+  }
+
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!validation.ok || !address) {
@@ -99,6 +120,7 @@ export default function KittyNewRoute() {
         smallTxThreshold: validation.smallThreshold,
         votingPeriodSeconds: validation.votingPeriodSeconds,
         feeCollection: address,
+        tontine: validation.tontine,
       });
 
       toast.loading('Creating the kitty…', { id: 'create-kitty' });
@@ -202,9 +224,34 @@ export default function KittyNewRoute() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Mode</CardTitle>
+            <CardDescription>How the pot flows.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-2">
+              <ModeOption
+                label="Free pot"
+                helper="Anyone can propose a spend. Quorum decides."
+                active={form.mode === 'free'}
+                onClick={() => setField('mode', 'free')}
+              />
+              <ModeOption
+                label="Rotating tontine"
+                helper="Each member claims the pot in turn (ROSCA)."
+                active={form.mode === 'tontine'}
+                onClick={() => setField('mode', 'tontine')}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Members</CardTitle>
             <CardDescription>
-              Safe addresses that can deposit, propose and vote. Min 2, no duplicates.
+              {form.mode === 'tontine'
+                ? 'Order is the rotation order. Index 0 claims round 0.'
+                : 'Safe addresses that can deposit, propose and vote. Min 2, no duplicates.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -212,8 +259,14 @@ export default function KittyNewRoute() {
               {form.memberInputs.map((value, idx) => {
                 const isSelf = address && value.toLowerCase() === address.toLowerCase();
                 const looksValid = !value || isAddress(value);
+                const isTontine = form.mode === 'tontine';
                 return (
                   <div key={idx} className="flex items-center gap-2">
+                    {isTontine && (
+                      <span className="w-6 text-center text-xs font-mono text-[var(--color-muted)]">
+                        {idx + 1}
+                      </span>
+                    )}
                     <Input
                       value={value}
                       onChange={(e) => setMember(idx, e.target.value.trim())}
@@ -226,6 +279,32 @@ export default function KittyNewRoute() {
                       required={idx < 2}
                     />
                     {isSelf && <Badge tone="accent">you</Badge>}
+                    {isTontine && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => swapMembers(idx, idx - 1)}
+                          disabled={idx === 0}
+                          aria-label="Move up"
+                          className="px-1.5"
+                        >
+                          <ArrowUp className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => swapMembers(idx, idx + 1)}
+                          disabled={idx === form.memberInputs.length - 1}
+                          aria-label="Move down"
+                          className="px-1.5"
+                        >
+                          <ArrowDown className="size-4" />
+                        </Button>
+                      </>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -298,6 +377,58 @@ export default function KittyNewRoute() {
           </CardContent>
         </Card>
 
+        {form.mode === 'tontine' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Rotation</CardTitle>
+              <CardDescription>
+                Each round, every member commits the same amount. The current
+                claimer takes the full pot ({form.memberInputs.filter(Boolean).length || '—'}×
+                contribution).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="roundDays">Round length · days</Label>
+                <Input
+                  id="roundDays"
+                  type="number"
+                  min={1}
+                  value={form.roundDays}
+                  onChange={(e) => setField('roundDays', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="roundContribution">Per-member contribution · CRC</Label>
+                <Input
+                  id="roundContribution"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.roundContributionCrc}
+                  onChange={(e) => setField('roundContributionCrc', e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="firstClaim">First claim opens in · days</Label>
+                <Input
+                  id="firstClaim"
+                  type="number"
+                  min={0}
+                  value={form.firstClaimDelayDays}
+                  onChange={(e) => setField('firstClaimDelayDays', e.target.value)}
+                  required
+                />
+                <p className="text-xs text-[var(--color-muted)]">
+                  Use 0 to let round 0 be claimable as soon as the pot is funded.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {validation.error && (
           <p className="text-sm text-rose-300">{validation.error}</p>
         )}
@@ -340,7 +471,15 @@ interface Validation {
   quorum: number;
   smallThreshold: bigint;
   votingPeriodSeconds: number;
+  tontine: TontineInput;
 }
+
+const TONTINE_OFF: TontineInput = {
+  enabled: false,
+  roundDurationSeconds: 0,
+  roundContribution: 0n,
+  firstClaimAtSeconds: 0,
+};
 
 function validate(form: FormState, _self: Address | null): Validation {
   const fallback: Validation = {
@@ -349,6 +488,7 @@ function validate(form: FormState, _self: Address | null): Validation {
     quorum: 0,
     smallThreshold: 0n,
     votingPeriodSeconds: 0,
+    tontine: TONTINE_OFF,
   };
 
   const name = form.name.trim();
@@ -391,5 +531,58 @@ function validate(form: FormState, _self: Address | null): Validation {
   }
   const votingPeriodSeconds = Math.floor(hours * 3600);
 
-  return { ok: true, members, quorum, smallThreshold, votingPeriodSeconds };
+  let tontine: TontineInput = TONTINE_OFF;
+  if (form.mode === 'tontine') {
+    const roundDays = Number(form.roundDays);
+    if (!Number.isFinite(roundDays) || roundDays <= 0) {
+      return { ...fallback, error: 'Round length must be a positive number of days.' };
+    }
+    let contribution: bigint;
+    try {
+      contribution = parseUnits(form.roundContributionCrc || '0', 18);
+    } catch {
+      return { ...fallback, error: 'Per-member contribution is not a valid number.' };
+    }
+    if (contribution <= 0n) {
+      return { ...fallback, error: 'Per-member contribution must be greater than zero.' };
+    }
+    const firstClaimDelayDays = Number(form.firstClaimDelayDays);
+    if (!Number.isFinite(firstClaimDelayDays) || firstClaimDelayDays < 0) {
+      return { ...fallback, error: 'First-claim delay must be zero or more days.' };
+    }
+    const now = Math.floor(Date.now() / 1000);
+    tontine = {
+      enabled: true,
+      roundDurationSeconds: Math.floor(roundDays * 86400),
+      roundContribution: contribution,
+      firstClaimAtSeconds: now + Math.floor(firstClaimDelayDays * 86400),
+    };
+  }
+
+  return { ok: true, members, quorum, smallThreshold, votingPeriodSeconds, tontine };
+}
+
+interface ModeOptionProps {
+  label: string;
+  helper: string;
+  active: boolean;
+  onClick: () => void;
+}
+
+function ModeOption({ label, helper, active, onClick }: ModeOptionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'flex flex-col gap-1 rounded-[var(--radius-card)] border p-3 text-left transition ' +
+        (active
+          ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]'
+          : 'border-[var(--color-border)] hover:border-[var(--color-accent)]/60')
+      }
+    >
+      <span className="text-sm font-semibold">{label}</span>
+      <span className="text-xs text-[var(--color-muted)]">{helper}</span>
+    </button>
+  );
 }

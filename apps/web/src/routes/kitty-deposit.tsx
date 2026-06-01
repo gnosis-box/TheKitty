@@ -107,7 +107,8 @@ export default function KittyDepositRoute() {
             <PiggyBank className="size-4" /> Amount
           </CardTitle>
           <CardDescription>
-            Personal CRC will be minted into pot tokens and pooled into the kitty.
+            Your personal CRC is collateralized into the kitty pool. The contract custodies
+            it on behalf of the group.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -46,4 +46,14 @@ export const hubV2Abi = [
     ],
     outputs: [],
   },
+  {
+    type: 'function',
+    name: 'trust',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: '_trustReceiver', type: 'address' },
+      { name: '_expiry', type: 'uint96' },
+    ],
+    outputs: [],
+  },
 ] as const;

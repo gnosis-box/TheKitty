@@ -11,12 +11,34 @@ import { kittyGovernanceAbi } from './abi/kitty-governance';
 // uint96 max = 2**96 - 1 → "trust never expires" sentinel used by Circles V2.
 export const TRUST_EXPIRY_NEVER: bigint = (1n << 96n) - 1n;
 
+/// Tontine (ROSCA) configuration. When `enabled` is false, all other fields
+/// MUST be zero — the contract reverts with `BadTontineParams` otherwise.
+/// When enabled, each member claims in turn (by index) once `firstClaimAt`
+/// has been reached, with `roundDuration` seconds between rounds. The payout
+/// per round is `roundContribution * memberCount`.
+export interface TontineInput {
+  enabled: boolean;
+  roundDurationSeconds: number;
+  roundContribution: bigint;
+  /// Unix timestamp (seconds) at which round 0 becomes claimable. Must be
+  /// >= current block timestamp.
+  firstClaimAtSeconds: number;
+}
+
+export const TONTINE_DISABLED: TontineInput = {
+  enabled: false,
+  roundDurationSeconds: 0,
+  roundContribution: 0n,
+  firstClaimAtSeconds: 0,
+};
+
 export interface CreateKittyInputs {
   /// Human-readable kitty name (max 19 chars enforced by BaseGroup).
   name: string;
   /// 3-4 letter symbol for the ERC-1155 group token.
   symbol: string;
-  /// Member Safe addresses. Must be >= 2 and all unique.
+  /// Member Safe addresses. Must be >= 2 and all unique. For tontine mode,
+  /// the order of this list is the rotation order — index 0 claims round 0.
   members: Address[];
   /// 1-100. 51 = simple majority.
   quorumPercent: number;
@@ -30,6 +52,8 @@ export interface CreateKittyInputs {
   service?: Address;
   /// Optional IPFS metadata digest (bytes32). Default: zero.
   metadataDigest?: Hex;
+  /// Optional rotating-savings (tontine) configuration. Default: disabled.
+  tontine?: TontineInput;
 }
 
 /// Build the single `createKitty` transaction that spins up a BaseGroup,
@@ -49,6 +73,12 @@ export function buildCreateKittyTx(inputs: CreateKittyInputs): MiniappTransactio
   }
   if (inputs.quorumPercent < 1 || inputs.quorumPercent > 100) {
     throw new Error('Quorum must be between 1 and 100.');
+  }
+  const tontine = inputs.tontine ?? TONTINE_DISABLED;
+  if (tontine.enabled) {
+    if (tontine.roundDurationSeconds <= 0 || tontine.roundContribution <= 0n) {
+      throw new Error('Tontine mode requires non-zero round duration and contribution.');
+    }
   }
 
   const data = encodeFunctionData({
@@ -71,6 +101,12 @@ export function buildCreateKittyTx(inputs: CreateKittyInputs): MiniappTransactio
         smallTxThreshold: inputs.smallTxThreshold,
         votingPeriod: inputs.votingPeriodSeconds,
         trustExpiry: TRUST_EXPIRY_NEVER,
+        tontine: {
+          enabled: tontine.enabled,
+          roundDuration: tontine.roundDurationSeconds,
+          roundContribution: tontine.roundContribution,
+          firstClaimAt: tontine.firstClaimAtSeconds,
+        },
       },
     ],
   });
@@ -156,6 +192,34 @@ export function buildExecuteTx(args: {
       abi: kittyGovernanceAbi,
       functionName: 'execute',
       args: [args.proposalId],
+    }),
+    value: '0',
+  };
+}
+
+/// Build the `Hub.trust(group, expiry)` tx a member signs to opt in to a
+/// kitty's group avatar. Needed before they can `groupMint` (deposit) into
+/// the pool. Using TRUST_EXPIRY_NEVER so the user only ever signs once.
+export function buildTrustGroupTx(args: { groupAvatar: Address }): MiniappTransaction {
+  return {
+    to: CIRCLES_CONFIG.v2HubAddress,
+    data: encodeFunctionData({
+      abi: hubV2Abi,
+      functionName: 'trust',
+      args: [args.groupAvatar, TRUST_EXPIRY_NEVER],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `claimRound` tx for tontine mode.
+export function buildClaimRoundTx(args: { governance: Address }): MiniappTransaction {
+  return {
+    to: args.governance,
+    data: encodeFunctionData({
+      abi: kittyGovernanceAbi,
+      functionName: 'claimRound',
+      args: [],
     }),
     value: '0',
   };
