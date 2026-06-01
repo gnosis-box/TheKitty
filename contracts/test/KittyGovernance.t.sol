@@ -114,7 +114,9 @@ contract KittyGovernanceTest is Test {
             enabled: false,
             roundDuration: 0,
             roundContribution: 0,
-            firstClaimAt: 0
+            firstClaimAt: 0,
+            cycleRounds: 0,
+            stakeAmount: 0
         });
     }
 
@@ -546,7 +548,9 @@ contract KittyGovernanceTest is Test {
             enabled: true,
             roundDuration: 30 days,
             roundContribution: contribution,
-            firstClaimAt: uint32(block.timestamp + 30 days)
+            firstClaimAt: uint32(block.timestamp + 30 days),
+            cycleRounds: 6, // allow 4-claim wrap test + headroom
+            stakeAmount: 0
         });
     }
 
@@ -582,7 +586,9 @@ contract KittyGovernanceTest is Test {
             enabled: false,
             roundDuration: 1 days,
             roundContribution: 0,
-            firstClaimAt: 0
+            firstClaimAt: 0,
+            cycleRounds: 0,
+            stakeAmount: 0
         });
         vm.expectRevert(KittyGovernance.BadTontineParams.selector);
         new KittyGovernance(
@@ -595,7 +601,9 @@ contract KittyGovernanceTest is Test {
             enabled: true,
             roundDuration: 0,
             roundContribution: 50e18,
-            firstClaimAt: uint32(block.timestamp + 1 days)
+            firstClaimAt: uint32(block.timestamp + 1 days),
+            cycleRounds: 3,
+            stakeAmount: 0
         });
         vm.expectRevert(KittyGovernance.BadTontineParams.selector);
         new KittyGovernance(
@@ -608,7 +616,9 @@ contract KittyGovernanceTest is Test {
             enabled: true,
             roundDuration: 1 days,
             roundContribution: 0,
-            firstClaimAt: uint32(block.timestamp + 1 days)
+            firstClaimAt: uint32(block.timestamp + 1 days),
+            cycleRounds: 3,
+            stakeAmount: 0
         });
         vm.expectRevert(KittyGovernance.BadTontineParams.selector);
         new KittyGovernance(
@@ -622,7 +632,9 @@ contract KittyGovernanceTest is Test {
             enabled: true,
             roundDuration: 1 days,
             roundContribution: 50e18,
-            firstClaimAt: uint32(block.timestamp - 1)
+            firstClaimAt: uint32(block.timestamp - 1),
+            cycleRounds: 3,
+            stakeAmount: 0
         });
         vm.expectRevert(KittyGovernance.BadTontineParams.selector);
         new KittyGovernance(

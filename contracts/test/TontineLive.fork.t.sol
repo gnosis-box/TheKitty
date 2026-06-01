@@ -153,7 +153,9 @@ contract TontineLiveTest is Test {
                 enabled: true,
                 roundDuration: 60,
                 roundContribution: 10e18,
-                firstClaimAt: uint32(block.timestamp + 60)
+                firstClaimAt: uint32(block.timestamp + 60),
+                cycleRounds: 3,
+                stakeAmount: 0
             })
         });
     }

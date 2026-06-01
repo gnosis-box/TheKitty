@@ -107,7 +107,9 @@ contract KittyFactoryTest is Test {
                 enabled: false,
                 roundDuration: 0,
                 roundContribution: 0,
-                firstClaimAt: 0
+                firstClaimAt: 0,
+                cycleRounds: 0,
+                stakeAmount: 0
             })
         });
     }
@@ -118,7 +120,9 @@ contract KittyFactoryTest is Test {
             enabled: true,
             roundDuration: 30 days,
             roundContribution: 50e18,
-            firstClaimAt: uint32(block.timestamp + 30 days)
+            firstClaimAt: uint32(block.timestamp + 30 days),
+            cycleRounds: 3,
+            stakeAmount: 0
         });
     }
 
