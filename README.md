@@ -2,23 +2,6 @@
 
 > **Programmable mutual aid for Circles communities.** A shared on-chain pot with rules in code, on Gnosis Chain.
 
-<table>
-  <tr>
-    <td width="33%" valign="top" align="center">
-      <img src="docs/screenshots/home.png" alt="Home — your group pots" />
-      <br /><sub><b>Your group pots</b></sub>
-    </td>
-    <td width="33%" valign="top" align="center">
-      <img src="docs/screenshots/pool.png" alt="Pool detail" />
-      <br /><sub><b>Pool detail</b></sub>
-    </td>
-    <td width="33%" valign="top" align="center">
-      <img src="docs/screenshots/spend.png" alt="Pay or propose" />
-      <br /><sub><b>Pay or propose</b></sub>
-    </td>
-  </tr>
-</table>
-
 ## What it is
 
 **The Kitty is on-chain tontines for Circles communities. Members contribute CRC each round, the smart contract pays the whole pot to one member at a time, and the rotation runs itself — no organizer holds the money, no organizer can run off with it.**
@@ -35,19 +18,6 @@ A second mode (**free pot**) is available for groups that want a shared treasury
    - *Tontine*: when a round opens, the current member calls `claimRound` and receives the full pot. Rotation advances by one.
    - *Free pot*: under the cap → any member pays direct, no vote. Over the cap → propose → approve → execute once quorum is met.
 4. **Aligned with Circles demurrage**: idle CRC loses ~7%/yr by design — a kitty keeps the money moving, which is precisely how a Freigeld-style currency is meant to behave.
-
-<table>
-  <tr>
-    <td width="50%" valign="top" align="center">
-      <img src="docs/screenshots/members.png" alt="Members and deposits" />
-      <br /><sub><b>Members & deposits</b> — per-member contribution tracker.</sub>
-    </td>
-    <td width="50%" valign="top" align="center">
-      <img src="docs/screenshots/deposit.png" alt="Deposit CRC" />
-      <br /><sub><b>Deposit</b> — bundle of groupMint + ERC-1155 transfer in one signature.</sub>
-    </td>
-  </tr>
-</table>
 
 ## Why on-chain
 
