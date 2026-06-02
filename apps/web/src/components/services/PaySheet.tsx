@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Check, ShieldCheck, Star, Wallet, X } from 'lucide-react';
+import { Check, ShieldCheck, Star, Vote, Wallet, X } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/hooks/use-wallet';
 import {
   buildLogPaymentTx,
+  buildProposeTx,
   buildRateServiceTx,
   buildSmallSpendTx,
   TRUST_EXPIRY_NEVER,
@@ -52,11 +54,13 @@ interface Props {
 /// not a spend surface — you claim into your wallet, then pay from there.
 export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const { address, isConnected, circlesSdk, sendTransactions } = useWallet();
+  const navigate = useNavigate();
   const [source, setSource] = useState<Source>({ type: 'wallet' });
   const [groupPotSources, setGroupPotSources] = useState<GroupPotPaySource[]>([]);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [proposingFor, setProposingFor] = useState<Address | null>(null);
   const [stage, setStage] = useState<Stage>('pay');
   const [ratingHover, setRatingHover] = useState(0);
   const [rating, setRating] = useState(0);
@@ -213,6 +217,44 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
     }
   }
 
+  /// Open a vote on the kitty for this exact payment. Used when the
+  /// price is over the kitty's `smallTxThreshold` — the buyer signs a
+  /// `propose(provider, price, memo)` tx and lands on the kitty detail
+  /// page so the group can approve. Execute (the actual transfer) will
+  /// still fail later if the provider hasn't trusted the kitty's
+  /// BaseGroup, but that's a precondition the kitty's members can
+  /// negotiate offline.
+  async function proposeToKitty(src: GroupPotPaySource) {
+    if (!viewer) return;
+    setProposingFor(src.kitty.governance);
+    try {
+      toast.loading('Opening vote…', { id: 'propose-from-pay' });
+      const memoForProposal =
+        memo.trim().length > 0
+          ? `[svc #${service.id.toString()}] ${service.title} — ${memo.trim()}`
+          : `[svc #${service.id.toString()}] ${service.title}`;
+      const tx = buildProposeTx({
+        governance: src.kitty.governance,
+        recipient: service.provider,
+        amount: service.priceCrc,
+        memo: memoForProposal,
+      });
+      const [hash] = await sendTransactions([tx]);
+      if (!hash) throw new Error('Host returned no tx hash');
+      toast.success(`Vote opened on ${src.kitty.name}`, {
+        id: 'propose-from-pay',
+      });
+      onClose();
+      navigate(`/kitty/${src.kitty.governance}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to open vote', {
+        id: 'propose-from-pay',
+      });
+    } finally {
+      setProposingFor(null);
+    }
+  }
+
   async function submitRating(stars: number) {
     if (!viewer) return;
     setSubmitting(true);
@@ -358,12 +400,29 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
               const isSelected =
                 source.type === 'groupPot' && source.governance === govKey;
               if (!src.eligible) {
+                if (src.reason === 'overThreshold') {
+                  // Don't disable the row — surface a "Propose" action
+                  // instead. The buyer opens a vote, the group decides.
+                  const pending = proposingFor === src.kitty.governance;
+                  return (
+                    <SourceRow
+                      key={govKey}
+                      icon={<ShieldCheck className="size-4" />}
+                      label={src.kitty.name}
+                      hint="Over small-spend cap — open a group vote"
+                      action={{
+                        label: pending ? 'Opening…' : 'Propose',
+                        icon: <Vote className="size-3.5" />,
+                        disabled: pending || submitting,
+                        onClick: () => void proposeToKitty(src),
+                      }}
+                    />
+                  );
+                }
                 const reason =
-                  src.reason === 'overThreshold'
-                    ? "Price over this pot's small-spend cap"
-                    : src.reason === 'insufficientBalance'
-                      ? `Pot has ${formatCrc(src.balance)} CRC — need ${priceLabel}`
-                      : "Provider doesn't trust this pot yet";
+                  src.reason === 'insufficientBalance'
+                    ? `Pot has ${formatCrc(src.balance)} CRC — need ${priceLabel}`
+                    : "Provider doesn't trust this pot yet";
                 return (
                   <SourceRow
                     key={govKey}
@@ -440,6 +499,13 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
   );
 }
 
+interface SourceRowAction {
+  label: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
 interface SourceRowProps {
   icon: React.ReactNode;
   label: string;
@@ -447,9 +513,21 @@ interface SourceRowProps {
   selected?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
+  /// When present, render a button on the right (e.g. "Propose") instead
+  /// of the selection checkmark. Used for over-threshold group pots that
+  /// can still be acted upon via the vote flow.
+  action?: SourceRowAction;
 }
 
-function SourceRow({ icon, label, hint, selected, disabled, onSelect }: SourceRowProps) {
+function SourceRow({
+  icon,
+  label,
+  hint,
+  selected,
+  disabled,
+  onSelect,
+  action,
+}: SourceRowProps) {
   const base =
     'flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left ' +
     (disabled
@@ -468,14 +546,30 @@ function SourceRow({ icon, label, hint, selected, disabled, onSelect }: SourceRo
           <p className="text-[10px] text-[var(--color-muted)]">{hint}</p>
         </div>
       </div>
-      {selected && !disabled && (
-        <div className="flex size-5 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)]">
-          <Check className="size-3" />
-        </div>
+      {action ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            action.onClick();
+          }}
+          disabled={action.disabled}
+          className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-[11px] font-medium hover:bg-[var(--color-surface-hi)] disabled:opacity-50"
+        >
+          {action.icon}
+          {action.label}
+        </button>
+      ) : (
+        selected &&
+        !disabled && (
+          <div className="flex size-5 items-center justify-center rounded-full bg-[var(--color-accent)] text-[var(--color-accent-fg)]">
+            <Check className="size-3" />
+          </div>
+        )
       )}
     </>
   );
-  if (onSelect && !disabled) {
+  if (onSelect && !disabled && !action) {
     return (
       <button type="button" onClick={onSelect} className={base}>
         {content}
