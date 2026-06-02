@@ -14,7 +14,6 @@ import {
   Info,
   Settings,
   Store,
-  User,
   Wallet,
   X,
 } from 'lucide-react';
@@ -62,9 +61,11 @@ interface NavLink {
   needsAddress?: boolean;
 }
 
+// The viewer's profile is already reachable by tapping the chip at the
+// top of the drawer (the entire connected card is a Link). We don't
+// repeat it here as a nav entry — that would just be visual noise.
 const NAV_LINKS: NavLink[] = [
   { to: '/services', label: 'Services', icon: <Store className="size-4" /> },
-  { to: '/providers/:address', label: 'My profile', icon: <User className="size-4" />, needsAddress: true },
   { to: '/services/mine', label: 'My services', icon: <Settings className="size-4" /> },
   { to: '/funding', label: 'Funding', icon: <Wallet className="size-4" /> },
   { to: '/stats', label: 'Stats', icon: <ChartBar className="size-4" /> },
@@ -173,8 +174,8 @@ function AppDrawer() {
             >
               <MemberAvatar address={address as Address} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">
-                  Connected · view profile
+                <p className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
+                  Connected
                 </p>
                 <p className="truncate text-sm font-medium">
                   {shortAddress(address as Address)}
