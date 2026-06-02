@@ -7,6 +7,7 @@ import { CIRCLES_CONFIG } from './circles-config';
 import { hubV2Abi } from './abi/hub-v2';
 import { kittyFactoryAbi } from './abi/kitty-factory';
 import { kittyGovernanceAbi } from './abi/kitty-governance';
+import { serviceRegistryAbi } from './abi/service-registry';
 
 // uint96 max = 2**96 - 1 → "trust never expires" sentinel used by Circles V2.
 export const TRUST_EXPIRY_NEVER: bigint = (1n << 96n) - 1n;
@@ -283,6 +284,109 @@ export function buildSmallSpendTx(args: {
       abi: kittyGovernanceAbi,
       functionName: 'smallSpend',
       args: [args.recipient, args.amount, args.memo],
+    }),
+    value: '0',
+  };
+}
+
+// ── ServiceRegistry transactions ──────────────────────────────────────────
+
+/// Build a `publish` tx for the singleton ServiceRegistry. Returns the new
+/// service id via the transaction return data; the front parses the
+/// ServicePublished event from the receipt to get the id.
+export function buildPublishServiceTx(args: {
+  title: string;
+  description: string;
+  priceCrc: bigint;
+  durationMins: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured (VITE_SERVICE_REGISTRY).');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'publish',
+      args: [args.title, args.description, args.priceCrc, args.durationMins],
+    }),
+    value: '0',
+  };
+}
+
+/// Build an `update` tx (provider-only on-chain).
+export function buildUpdateServiceTx(args: {
+  id: bigint;
+  title: string;
+  description: string;
+  priceCrc: bigint;
+  durationMins: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'update',
+      args: [args.id, args.title, args.description, args.priceCrc, args.durationMins],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `deactivate` tx (provider-only on-chain).
+export function buildDeactivateServiceTx(args: { id: bigint }): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'deactivate',
+      args: [args.id],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `logPayment` tx — bundled AFTER a real Hub.safeTransferFrom in
+/// the same signature so the on-chain trace mirrors the actual payment.
+export function buildLogPaymentTx(args: {
+  serviceId: bigint;
+  amount: bigint;
+  memo: string;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'logPayment',
+      args: [args.serviceId, args.amount, args.memo],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `rate` tx (1..5 stars). Re-rating overwrites the previous slot.
+export function buildRateServiceTx(args: {
+  serviceId: bigint;
+  stars: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'rate',
+      args: [args.serviceId, args.stars],
     }),
     value: '0',
   };

@@ -18,6 +18,9 @@ export interface CirclesConfig {
   liftERC20Address: `0x${string}`;
   /// Deployed by us, filled in once the KittyFactory deploy script has run.
   kittyFactoryAddress?: `0x${string}`;
+  /// Singleton service directory deployed by us. Filled in via
+  /// VITE_SERVICE_REGISTRY after `DeployServiceRegistry.s.sol`.
+  serviceRegistryAddress?: `0x${string}`;
 }
 
 const GNOSIS: CirclesConfig = {
@@ -33,6 +36,8 @@ const GNOSIS: CirclesConfig = {
   standardTreasury: '0x08F90aB73A515308f03A718257ff9887ED330C6e',
   liftERC20Address: '0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5',
   kittyFactoryAddress: (import.meta.env.VITE_KITTY_FACTORY as `0x${string}` | undefined) ?? undefined,
+  serviceRegistryAddress:
+    (import.meta.env.VITE_SERVICE_REGISTRY as `0x${string}` | undefined) ?? undefined,
 };
 
 export const CIRCLES_CONFIG: CirclesConfig = GNOSIS;
