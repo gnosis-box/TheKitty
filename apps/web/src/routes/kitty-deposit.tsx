@@ -97,7 +97,7 @@ export default function KittyDepositRoute() {
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
             Deposit
           </p>
-          <h1 className="text-2xl font-semibold">Chip into the kitty</h1>
+          <h1 className="text-2xl font-semibold">Deposit CRC</h1>
         </div>
       </header>
 

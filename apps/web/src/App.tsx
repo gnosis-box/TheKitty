@@ -1,13 +1,18 @@
 import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { DrawerProvider } from './components/AppDrawer';
 import AboutRoute from './routes/about';
-import HomeRoute from './routes/home';
+import FundingRoute from './routes/funding';
 import KittyDepositRoute from './routes/kitty-deposit';
 import KittyDetailRoute from './routes/kitty-detail';
 import KittyJoinRoute from './routes/kitty-join';
 import KittyNewRoute from './routes/kitty-new';
 import KittyProposeRoute from './routes/kitty-propose';
+import ServicesEditRoute from './routes/services-edit';
+import ServicesMineRoute from './routes/services-mine';
+import ServicesNewRoute from './routes/services-new';
+import ServicesRoute from './routes/services';
 import StatsRoute from './routes/stats';
 import { captureInviterFromUrl } from './lib/inviter';
 
@@ -19,9 +24,15 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-dvh">
-      <Routes>
-        <Route path="/" element={<HomeRoute />} />
+    <DrawerProvider>
+      <div className="min-h-dvh">
+        <Routes>
+        <Route path="/" element={<Navigate to="/services" replace />} />
+        <Route path="/services" element={<ServicesRoute />} />
+        <Route path="/services/new" element={<ServicesNewRoute />} />
+        <Route path="/services/mine" element={<ServicesMineRoute />} />
+        <Route path="/services/:id/edit" element={<ServicesEditRoute />} />
+        <Route path="/funding" element={<FundingRoute />} />
         <Route path="/kitty/new" element={<KittyNewRoute />} />
         <Route path="/kitty/:id" element={<KittyDetailRoute />} />
         <Route path="/kitty/:id/join" element={<KittyJoinRoute />} />
@@ -29,8 +40,9 @@ export default function App() {
         <Route path="/kitty/:id/propose" element={<KittyProposeRoute />} />
         <Route path="/stats" element={<StatsRoute />} />
         <Route path="/about" element={<AboutRoute />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </div>
+        <Route path="*" element={<Navigate to="/services" replace />} />
+        </Routes>
+      </div>
+    </DrawerProvider>
   );
 }

@@ -1,34 +1,46 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Activity,
-  ArrowLeft,
   Coins,
   ExternalLink,
+  HandCoins,
   RotateCw as RotateIcon,
+  Store,
   Trophy,
+  Users,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { BurgerButton } from '@/components/BurgerButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
-import { readGlobalStats, type GlobalStats } from '@/lib/global-stats';
+import {
+  readGlobalStats,
+  readServiceStats,
+  type GlobalStats,
+  type ServiceStats,
+} from '@/lib/global-stats';
 import { formatCrc, shortAddress } from '@/lib/utils';
 
 export default function StatsRoute() {
-  const navigate = useNavigate();
   const [stats, setStats] = useState<GlobalStats | null>(null);
+  const [services, setServices] = useState<ServiceStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const s = await readGlobalStats();
-        if (!cancelled) setStats(s);
+        const [s, sv] = await Promise.all([readGlobalStats(), readServiceStats()]);
+        if (!cancelled) {
+          setStats(s);
+          setServices(sv);
+        }
       } catch {
-        if (!cancelled) setStats(null);
+        if (!cancelled) {
+          setStats(null);
+          setServices(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -40,16 +52,8 @@ export default function StatsRoute() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/')}
-          aria-label="Back"
-          className="px-2"
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
+      <header className="flex items-center gap-3">
+        <BurgerButton />
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
             The Kitty
@@ -64,7 +68,58 @@ export default function StatsRoute() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Activity className="size-4" /> All-time
+            <Store className="size-4" /> Services board
+          </CardTitle>
+          <CardDescription>
+            What people in the circle have published and bought from each other.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 rounded-lg" />
+              ))}
+            </div>
+          ) : !services || services.servicesPublished === 0 ? (
+            <p className="text-sm text-[var(--color-muted)]">
+              Nothing on the board yet. Publish what you offer to get the first stat.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <Stat
+                icon={<Store className="size-3.5" />}
+                label="Active"
+                value={services.activeServices.toString()}
+                hint={`${services.servicesPublished} ever published`}
+              />
+              <Stat
+                icon={<Users className="size-3.5" />}
+                label="Providers"
+                value={services.activeProviders.toString()}
+                hint="With an active listing"
+              />
+              <Stat
+                icon={<HandCoins className="size-3.5" />}
+                label="Payments"
+                value={services.paymentsLogged.toString()}
+                hint="Logged on-chain"
+              />
+              <Stat
+                icon={<Coins className="size-3.5" />}
+                label="CRC paid"
+                value={formatCrc(services.totalCrcPaid)}
+                hint="Total moved through services"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="size-4" /> Funding side
           </CardTitle>
           <CardDescription>
             Aggregated from the deployed KittyFactory + every governance contract it spawned.
@@ -115,38 +170,70 @@ export default function StatsRoute() {
         <CardContent>
           <ul className="flex flex-col gap-2 text-sm leading-relaxed text-[var(--color-text)]">
             <li>
-              <strong>Kitties</strong> — every row above is a real BaseGroup avatar on Circles
-              V2 with a custom KittyGovernance custodian. Anyone can audit them on-chain.
+              <strong>Active services</strong> — every row is a real on-chain listing in the
+              singleton ServiceRegistry. Anyone can browse and pay through{' '}
+              <code className="rounded bg-[var(--color-surface-hi)] px-1 py-0.5">
+                Hub.safeTransferFrom
+              </code>{' '}
+              without a platform sitting in the middle.
             </li>
             <li>
-              <strong>Rounds paid</strong> — each time a member's turn came up and they called
+              <strong>Providers</strong> — distinct Circles humans who currently have at least
+              one active listing. The trust-graph is the discoverability layer; the registry
+              is just the catalog.
+            </li>
+            <li>
+              <strong>Payments + CRC paid</strong> — every pay flow bundles a{' '}
+              <code className="rounded bg-[var(--color-surface-hi)] px-1 py-0.5">logPayment</code>
+              {' '}call after the transfer, so the aggregates above mirror what actually moved
+              between humans. Demurrage-friendly: this is exactly the kind of circulation
+              Circles is designed for.
+            </li>
+            <li>
+              <strong>Kitties + rounds + CRC moved</strong> — every kitty is a real BaseGroup
+              avatar on Circles V2 with a custom KittyGovernance custodian. Rounds paid are
+              cases where a member called{' '}
               <code className="rounded bg-[var(--color-surface-hi)] px-1 py-0.5">claimRound</code>
-              , the contract paid them out and rotated to the next member. No organizer involved.
-            </li>
-            <li>
-              <strong>CRC moved</strong> — total CRC that left the kitty pools into members'
-              wallets through the rotation. Demurrage-friendly: this is exactly the kind of
-              circulation Circles is designed for.
+              {' '}and the contract rotated to the next member by index — no organizer ever
+              involved.
             </li>
           </ul>
         </CardContent>
       </Card>
 
-      {CIRCLES_CONFIG.kittyFactoryAddress && (
+      {(CIRCLES_CONFIG.kittyFactoryAddress || CIRCLES_CONFIG.serviceRegistryAddress) && (
         <Card>
           <CardContent>
-            <p className="text-xs text-[var(--color-muted)]">
-              KittyFactory:
-              <a
-                href={`https://gnosisscan.io/address/${CIRCLES_CONFIG.kittyFactoryAddress}`}
-                target="_blank"
-                rel="noreferrer"
-                className="ml-1 inline-flex items-center gap-1 font-mono hover:text-[var(--color-text)]"
-              >
-                {shortAddress(CIRCLES_CONFIG.kittyFactoryAddress)}
-                <ExternalLink className="size-3" />
-              </a>
-            </p>
+            <div className="flex flex-col gap-1 text-xs text-[var(--color-muted)]">
+              {CIRCLES_CONFIG.kittyFactoryAddress && (
+                <p>
+                  KittyFactory:
+                  <a
+                    href={`https://gnosisscan.io/address/${CIRCLES_CONFIG.kittyFactoryAddress}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-1 inline-flex items-center gap-1 font-mono hover:text-[var(--color-text)]"
+                  >
+                    {shortAddress(CIRCLES_CONFIG.kittyFactoryAddress)}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </p>
+              )}
+              {CIRCLES_CONFIG.serviceRegistryAddress && (
+                <p>
+                  ServiceRegistry:
+                  <a
+                    href={`https://gnosisscan.io/address/${CIRCLES_CONFIG.serviceRegistryAddress}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-1 inline-flex items-center gap-1 font-mono hover:text-[var(--color-text)]"
+                  >
+                    {shortAddress(CIRCLES_CONFIG.serviceRegistryAddress)}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -158,9 +245,10 @@ interface StatProps {
   icon: ReactNode;
   label: string;
   value: string;
+  hint?: string;
 }
 
-function Stat({ icon, label, value }: StatProps) {
+function Stat({ icon, label, value, hint }: StatProps) {
   return (
     <div className="flex flex-col gap-0.5 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2">
       <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
@@ -168,6 +256,9 @@ function Stat({ icon, label, value }: StatProps) {
         {label}
       </span>
       <span className="font-mono text-base">{value}</span>
+      {hint && (
+        <span className="text-[10px] leading-tight text-[var(--color-muted)]">{hint}</span>
+      )}
     </div>
   );
 }

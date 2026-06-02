@@ -1,15 +1,39 @@
 import { encodeFunctionData, type Hex } from 'viem';
+import { Core } from '@aboutcircles/sdk-core';
+import { circlesConfig } from '@aboutcircles/sdk-utils';
+import type { TransactionRequest } from '@aboutcircles/sdk-types';
 
 import type { MiniappTransaction } from '@/components/wallet/WalletProvider';
 import type { Address } from '@/types/kitty';
 
 import { CIRCLES_CONFIG } from './circles-config';
-import { hubV2Abi } from './abi/hub-v2';
 import { kittyFactoryAbi } from './abi/kitty-factory';
 import { kittyGovernanceAbi } from './abi/kitty-governance';
+import { serviceRegistryAbi } from './abi/service-registry';
 
 // uint96 max = 2**96 - 1 → "trust never expires" sentinel used by Circles V2.
 export const TRUST_EXPIRY_NEVER: bigint = (1n << 96n) - 1n;
+
+/// Lazy Core singleton — gives us typed Hub V2 / NameRegistry / wrapper
+/// wrappers that build `TransactionRequest` objects (no calldata in our
+/// repo). Cheap to construct; we keep one instance per module to avoid
+/// re-allocating ABIs on every helper call.
+let _core: Core | null = null;
+function getCore(): Core {
+  if (!_core) _core = new Core(circlesConfig[100]);
+  return _core;
+}
+
+/// Convert an SDK `TransactionRequest` (bigint `value`) to the miniapp
+/// host shape (string `value`). The host's `sendTransactions` expects the
+/// latter; the SDK encoders produce the former.
+function toMiniappTx(req: TransactionRequest): MiniappTransaction {
+  return {
+    to: req.to,
+    data: req.data,
+    value: req.value == null ? '0' : req.value.toString(),
+  };
+}
 
 /// Tontine (ROSCA) configuration. When `enabled` is false, all other fields
 /// MUST be zero — the contract reverts with `BadTontineParams` otherwise.
@@ -140,20 +164,20 @@ export function buildDepositBundle(args: {
   /// Amount of personal CRC to commit (uint256 base units, e.g. 30e18 = 30 CRC).
   amount: bigint;
 }): MiniappTransaction[] {
-  const hub = CIRCLES_CONFIG.v2HubAddress;
-  const groupMint = encodeFunctionData({
-    abi: hubV2Abi,
-    functionName: 'groupMint',
-    args: [args.baseGroup, [args.member], [args.amount], '0x'],
-  });
-  const transfer = encodeFunctionData({
-    abi: hubV2Abi,
-    functionName: 'safeTransferFrom',
-    args: [args.member, args.governance, args.potTokenId, args.amount, '0x'],
-  });
+  const core = getCore();
   return [
-    { to: hub, data: groupMint, value: '0' },
-    { to: hub, data: transfer, value: '0' },
+    toMiniappTx(
+      core.hubV2.groupMint(args.baseGroup, [args.member], [args.amount], '0x'),
+    ),
+    toMiniappTx(
+      core.hubV2.safeTransferFrom(
+        args.member,
+        args.governance,
+        args.potTokenId,
+        args.amount,
+        '0x',
+      ),
+    ),
   ];
 }
 
@@ -214,15 +238,7 @@ export function buildExecuteTx(args: {
 /// pool) and for trusting individual humans inline from the kitty detail
 /// page — same primitive either way.
 export function buildTrustTx(args: { trustee: Address }): MiniappTransaction {
-  return {
-    to: CIRCLES_CONFIG.v2HubAddress,
-    data: encodeFunctionData({
-      abi: hubV2Abi,
-      functionName: 'trust',
-      args: [args.trustee, TRUST_EXPIRY_NEVER],
-    }),
-    value: '0',
-  };
+  return toMiniappTx(getCore().hubV2.trust(args.trustee, TRUST_EXPIRY_NEVER));
 }
 
 /// Build a `claimRound` tx for tontine mode.
@@ -283,6 +299,109 @@ export function buildSmallSpendTx(args: {
       abi: kittyGovernanceAbi,
       functionName: 'smallSpend',
       args: [args.recipient, args.amount, args.memo],
+    }),
+    value: '0',
+  };
+}
+
+// ── ServiceRegistry transactions ──────────────────────────────────────────
+
+/// Build a `publish` tx for the singleton ServiceRegistry. Returns the new
+/// service id via the transaction return data; the front parses the
+/// ServicePublished event from the receipt to get the id.
+export function buildPublishServiceTx(args: {
+  title: string;
+  description: string;
+  priceCrc: bigint;
+  durationMins: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured (VITE_SERVICE_REGISTRY).');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'publish',
+      args: [args.title, args.description, args.priceCrc, args.durationMins],
+    }),
+    value: '0',
+  };
+}
+
+/// Build an `update` tx (provider-only on-chain).
+export function buildUpdateServiceTx(args: {
+  id: bigint;
+  title: string;
+  description: string;
+  priceCrc: bigint;
+  durationMins: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'update',
+      args: [args.id, args.title, args.description, args.priceCrc, args.durationMins],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `deactivate` tx (provider-only on-chain).
+export function buildDeactivateServiceTx(args: { id: bigint }): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'deactivate',
+      args: [args.id],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `logPayment` tx — bundled AFTER a real Hub.safeTransferFrom in
+/// the same signature so the on-chain trace mirrors the actual payment.
+export function buildLogPaymentTx(args: {
+  serviceId: bigint;
+  amount: bigint;
+  memo: string;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'logPayment',
+      args: [args.serviceId, args.amount, args.memo],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `rate` tx (1..5 stars). Re-rating overwrites the previous slot.
+export function buildRateServiceTx(args: {
+  serviceId: bigint;
+  stars: number;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.serviceRegistryAddress) {
+    throw new Error('ServiceRegistry address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.serviceRegistryAddress,
+    data: encodeFunctionData({
+      abi: serviceRegistryAbi,
+      functionName: 'rate',
+      args: [args.serviceId, args.stars],
     }),
     value: '0',
   };
