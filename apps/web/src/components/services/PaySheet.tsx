@@ -5,8 +5,16 @@ import { Check, ShieldCheck, Star, Wallet, X } from 'lucide-react';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/hooks/use-wallet';
-import { buildLogPaymentTx, buildRateServiceTx } from '@/lib/tx-builders';
-import { TRUST_EXPIRY_NEVER } from '@/lib/tx-builders';
+import {
+  buildLogPaymentTx,
+  buildRateServiceTx,
+  buildSmallSpendTx,
+  TRUST_EXPIRY_NEVER,
+} from '@/lib/tx-builders';
+import {
+  readGroupPotPaySources,
+  type GroupPotPaySource,
+} from '@/lib/kitty-pay-sources';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
 import type { Address } from '@/types/kitty';
@@ -18,6 +26,14 @@ const MAX_MEMO_LEN = 256;
 
 type Stage = 'pay' | 'rate';
 
+/// Discriminated union for the pay source picker. Wallet is always
+/// present; group pots only appear when the viewer is a member, the
+/// price fits the small-spend cap, and the provider already trusts the
+/// kitty's BaseGroup.
+type Source =
+  | { type: 'wallet' }
+  | { type: 'groupPot'; governance: Address; name: string };
+
 interface Props {
   service: ServiceView;
   /// Set to a non-null value to open the sheet on a service. Null = closed.
@@ -27,15 +43,16 @@ interface Props {
   onPaid(): void;
 }
 
-type PaySource = 'wallet';
-
-/// Bottom-sheet UX: source picker + (optional Trust) + Pay + logPayment, all
-/// bundled in a single host signature. V1 only exposes the **Circles wallet**
-/// source — paying out of a kitty (tontine claim or free-pot smallSpend) lands
-/// in a follow-up cycle once we have round/threshold detection plumbed.
+/// Bottom-sheet UX: source picker + Pay + logPayment, bundled into a
+/// single host signature. Two source types V1:
+///   - Wallet  → [trust?, Hub.safeTransferFrom(personal CRC), logPayment]
+///   - GroupPot → [kitty.smallSpend, logPayment]
+/// Tontines are deliberately absent: they're a savings accumulator,
+/// not a spend surface — you claim into your wallet, then pay from there.
 export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const { address, isConnected, circlesSdk, sendTransactions } = useWallet();
-  const [source] = useState<PaySource>('wallet');
+  const [source, setSource] = useState<Source>({ type: 'wallet' });
+  const [groupPotSources, setGroupPotSources] = useState<GroupPotPaySource[]>([]);
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<Stage>('pay');
@@ -62,7 +79,33 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
     setStage('pay');
     setRating(0);
     setRatingHover(0);
+    setSource({ type: 'wallet' });
   }, [open, service.id]);
+
+  // Fetch the viewer's eligible group-pot sources when the sheet opens.
+  // Cheap: localStorage read + one Hub multicall.
+  useEffect(() => {
+    if (!open || !viewer) {
+      setGroupPotSources([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await readGroupPotPaySources(
+          viewer,
+          service.provider,
+          service.priceCrc,
+        );
+        if (!cancelled) setGroupPotSources(list);
+      } catch {
+        if (!cancelled) setGroupPotSources([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, viewer, service.provider, service.priceCrc]);
 
   // Esc closes the sheet.
   useEffect(() => {
@@ -76,57 +119,70 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
 
   const ctaLabel = useMemo(() => {
     if (submitting) return 'Paying…';
+    if (source.type === 'groupPot') {
+      return `Pay ${priceLabel} CRC from ${source.name}`;
+    }
     if (!trusted) return `Trust + pay ${priceLabel} CRC`;
     return `Pay ${priceLabel} CRC`;
-  }, [submitting, trusted, priceLabel]);
+  }, [submitting, trusted, priceLabel, source]);
 
   async function onConfirm() {
     if (!viewer || !circlesSdk) {
       toast.error('Open inside the Circles playground first.');
       return;
     }
-    if (source !== 'wallet') return;
-
     setSubmitting(true);
     try {
       toast.loading('Sending payment…', { id: 'pay-service' });
 
-      // Use the SDK's typed Hub V2 wrappers — no hand-rolled calldata.
-      // `tokenId == uint256(uint160(avatar))` for personal CRC (Hub V2).
-      const core = circlesSdk.core;
-      const tokenId = BigInt(viewer);
-      const reqs = [
-        ...(trusted
-          ? []
-          : [core.hubV2.trust(service.provider, TRUST_EXPIRY_NEVER)]),
-        core.hubV2.safeTransferFrom(
-          viewer,
-          service.provider,
-          tokenId,
-          service.priceCrc,
-          '0x',
-        ),
-      ];
-
-      // logPayment lives on our own ServiceRegistry, so it stays viem-encoded.
-      // The memo is optional — empty string means "no note", which the
-      // contract accepts. Calendar-style services use it for "Sat 14h" etc.
+      // logPayment is bundled in every path so the registry aggregates
+      // mirror the actual transfer regardless of where the CRC came from.
       const logTx = buildLogPaymentTx({
         serviceId: service.id,
         amount: service.priceCrc,
         memo: memo.trim(),
       });
 
-      // Convert SDK TransactionRequests (bigint `value`) to the miniapp host
-      // shape (hex-string `value`) and ship them all in one signature.
-      const bundle = [
-        ...reqs.map((r) => ({
-          to: r.to,
-          data: r.data,
-          value: r.value == null ? '0' : r.value.toString(),
-        })),
-        logTx,
-      ];
+      let bundle;
+      if (source.type === 'groupPot') {
+        // Group-pot smallSpend: the kitty sends pot tokens directly to the
+        // provider. No Hub.trust step from the buyer is useful here — the
+        // recipient-trusts-issuer check on the Hub is against the kitty's
+        // BaseGroup, and that's already satisfied (we filtered for it).
+        const smallSpendTx = buildSmallSpendTx({
+          governance: source.governance,
+          recipient: service.provider,
+          amount: service.priceCrc,
+          memo: memo.trim(),
+        });
+        bundle = [smallSpendTx, logTx];
+      } else {
+        // Wallet: typed Hub V2 wrappers from sdk-core. Personal CRC token
+        // id == uint256(uint160(viewer)).
+        const core = circlesSdk.core;
+        const tokenId = BigInt(viewer);
+        const reqs = [
+          ...(trusted
+            ? []
+            : [core.hubV2.trust(service.provider, TRUST_EXPIRY_NEVER)]),
+          core.hubV2.safeTransferFrom(
+            viewer,
+            service.provider,
+            tokenId,
+            service.priceCrc,
+            '0x',
+          ),
+        ];
+        bundle = [
+          ...reqs.map((r) => ({
+            to: r.to,
+            data: r.data,
+            value: r.value == null ? '0' : r.value.toString(),
+          })),
+          logTx,
+        ];
+      }
+
       const hashes = await sendTransactions(bundle);
       const hash = hashes[0];
       if (!hash) throw new Error('Host returned no tx hash');
@@ -275,14 +331,45 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
               icon={<Wallet className="size-4" />}
               label="My Circles wallet"
               hint={`Sending ${priceLabel} CRC from your wallet`}
-              selected
+              selected={source.type === 'wallet'}
+              onSelect={() => setSource({ type: 'wallet' })}
             />
-            <SourceRow
-              icon={<ShieldCheck className="size-4" />}
-              label="From a kitty"
-              hint="Coming soon — tontine round or group-pot small spend"
-              disabled
-            />
+            {groupPotSources.map((src) => {
+              const govKey = src.kitty.governance;
+              const isSelected =
+                source.type === 'groupPot' && source.governance === govKey;
+              if (!src.eligible) {
+                return (
+                  <SourceRow
+                    key={govKey}
+                    icon={<ShieldCheck className="size-4" />}
+                    label={src.kitty.name}
+                    hint={
+                      src.reason === 'overThreshold'
+                        ? 'Price over this pot\'s small-spend cap'
+                        : 'Provider doesn\'t trust this pot yet'
+                    }
+                    disabled
+                  />
+                );
+              }
+              return (
+                <SourceRow
+                  key={govKey}
+                  icon={<ShieldCheck className="size-4" />}
+                  label={src.kitty.name}
+                  hint="Pay from this group pot (smallSpend)"
+                  selected={isSelected}
+                  onSelect={() =>
+                    setSource({
+                      type: 'groupPot',
+                      governance: govKey,
+                      name: src.kitty.name,
+                    })
+                  }
+                />
+              );
+            })}
           </div>
         </section>
 
@@ -338,21 +425,19 @@ interface SourceRowProps {
   hint: string;
   selected?: boolean;
   disabled?: boolean;
+  onSelect?: () => void;
 }
 
-function SourceRow({ icon, label, hint, selected, disabled }: SourceRowProps) {
-  return (
-    <div
-      aria-disabled={disabled}
-      className={
-        'flex items-center justify-between gap-3 rounded-xl border p-3 ' +
-        (disabled
-          ? 'border-[var(--color-border)] bg-transparent opacity-50'
-          : selected
-            ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
-            : 'border-[var(--color-border)] bg-[var(--color-surface-hi)]')
-      }
-    >
+function SourceRow({ icon, label, hint, selected, disabled, onSelect }: SourceRowProps) {
+  const base =
+    'flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left ' +
+    (disabled
+      ? 'border-[var(--color-border)] bg-transparent opacity-50'
+      : selected
+        ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
+        : 'border-[var(--color-border)] bg-[var(--color-surface-hi)] hover:bg-[var(--color-border)]');
+  const content = (
+    <>
       <div className="flex items-center gap-3">
         <div className="flex size-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-muted)]">
           {icon}
@@ -367,6 +452,18 @@ function SourceRow({ icon, label, hint, selected, disabled }: SourceRowProps) {
           <Check className="size-3" />
         </div>
       )}
+    </>
+  );
+  if (onSelect && !disabled) {
+    return (
+      <button type="button" onClick={onSelect} className={base}>
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div aria-disabled={disabled} className={base}>
+      {content}
     </div>
   );
 }
