@@ -2,12 +2,13 @@ import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import AboutRoute from './routes/about';
-import HomeRoute from './routes/home';
+import FundingRoute from './routes/funding';
 import KittyDepositRoute from './routes/kitty-deposit';
 import KittyDetailRoute from './routes/kitty-detail';
 import KittyJoinRoute from './routes/kitty-join';
 import KittyNewRoute from './routes/kitty-new';
 import KittyProposeRoute from './routes/kitty-propose';
+import ServicesRoute from './routes/services';
 import StatsRoute from './routes/stats';
 import { captureInviterFromUrl } from './lib/inviter';
 
@@ -21,7 +22,9 @@ export default function App() {
   return (
     <div className="min-h-dvh">
       <Routes>
-        <Route path="/" element={<HomeRoute />} />
+        <Route path="/" element={<Navigate to="/services" replace />} />
+        <Route path="/services" element={<ServicesRoute />} />
+        <Route path="/funding" element={<FundingRoute />} />
         <Route path="/kitty/new" element={<KittyNewRoute />} />
         <Route path="/kitty/:id" element={<KittyDetailRoute />} />
         <Route path="/kitty/:id/join" element={<KittyJoinRoute />} />
@@ -29,7 +32,7 @@ export default function App() {
         <Route path="/kitty/:id/propose" element={<KittyProposeRoute />} />
         <Route path="/stats" element={<StatsRoute />} />
         <Route path="/about" element={<AboutRoute />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/services" replace />} />
       </Routes>
     </div>
   );

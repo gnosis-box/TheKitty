@@ -2,21 +2,26 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RotateCw, Users } from 'lucide-react';
 
+import { AppFooter } from '@/components/AppFooter';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { KittyCard } from '@/components/pot/KittyCard';
-import { MemberAvatar } from '@/components/pot/MemberAvatar';
-import { InviterBanner } from '@/components/pot/InviterBanner';
-import { PublicStats } from '@/components/pot/PublicStats';
 import { InviteButton } from '@/components/InviteButton';
+import { InviterBanner } from '@/components/pot/InviterBanner';
+import { KittyCard } from '@/components/pot/KittyCard';
 import { Logo } from '@/components/Logo';
+import { MainTabs } from '@/components/MainTabs';
+import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
+import { PublicStats } from '@/components/pot/PublicStats';
 import { useWallet } from '@/hooks/use-wallet';
 import { discoverKittiesForMember, mergeDiscoveredKitties } from '@/lib/discover-kitties';
 import { loadKitties, saveKitty } from '@/lib/storage';
 import type { KittyRef } from '@/types/kitty';
 
-export default function HomeRoute() {
+/// The funding tab — lists the kitties the viewer belongs to (tontines and
+/// group pots) and offers the CTAs to start new ones. The actual spending
+/// happens on the Services tab; this surface is purely the cash-flow tool.
+export default function FundingRoute() {
   const { address, isConnected, isMiniappHost } = useWallet();
   const [kitties, setKitties] = useState<KittyRef[]>([]);
 
@@ -25,15 +30,9 @@ export default function HomeRoute() {
       setKitties([]);
       return;
     }
-    // Phase 1: paint immediately from the local cache so the page never
-    // shows a flash of empty state for known kitties.
     const local = loadKitties(address);
     setKitties(local);
 
-    // Phase 2: discover from chain in the background. Any kitty where the
-    // viewer was listed as a member at creation time gets added to the list
-    // and persisted to localStorage so we don't rescan from scratch next
-    // time. Failures stay silent — discovery is a nice-to-have.
     let cancelled = false;
     (async () => {
       try {
@@ -41,8 +40,6 @@ export default function HomeRoute() {
         if (cancelled || discovered.length === 0) return;
         const merged = mergeDiscoveredKitties(local, discovered);
         if (merged.length === local.length) return;
-        // Persist the newly discovered ones so future loads paint them in
-        // Phase 1 directly.
         for (const k of merged.slice(local.length)) {
           saveKitty(address, k);
         }
@@ -56,9 +53,6 @@ export default function HomeRoute() {
     };
   }, [address]);
 
-  // Pick the header copy based on what the user actually has. If they only
-  // have tontines (or none yet), the tontine framing is correct. If they
-  // have any free-pot kitties too, fall back to the broader "kitties" label.
   const { headerTitle, headerSubtitle, emptyCopy } = useMemo(() => {
     const hasFree = kitties.some((k) => (k.mode ?? 'free') === 'free');
     if (hasFree) {
@@ -101,6 +95,8 @@ export default function HomeRoute() {
           )}
         </div>
       </header>
+
+      <MainTabs />
 
       <InviterBanner selfAddress={address} />
 
@@ -153,28 +149,5 @@ export default function HomeRoute() {
 
       <AppFooter />
     </main>
-  );
-}
-
-function AppFooter() {
-  return (
-    <footer className="mt-4 flex items-center justify-center gap-5 text-xs text-[var(--color-muted)]">
-      <Link to="/stats" className="hover:text-[var(--color-text)]">
-        Stats
-      </Link>
-      <span className="text-[var(--color-border)]">·</span>
-      <Link to="/about" className="hover:text-[var(--color-text)]">
-        About
-      </Link>
-      <span className="text-[var(--color-border)]">·</span>
-      <a
-        href="https://github.com/gnosis-box/TheKitty"
-        target="_blank"
-        rel="noreferrer"
-        className="hover:text-[var(--color-text)]"
-      >
-        GitHub
-      </a>
-    </footer>
   );
 }
