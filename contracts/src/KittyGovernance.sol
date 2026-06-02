@@ -76,7 +76,9 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     ///         When `tontineMode == true`, members can call `claimRound()` in
     ///         turn (by index in `_members`) once per `roundDuration`, each
     ///         time pulling `roundContribution * memberCount` out of the pot.
-    ///         Free-form `propose`/`smallSpend` remain available alongside.
+    ///         Free-form `propose`/`smallSpend` are DISABLED in tontine mode:
+    ///         the pot is reserved for the rotation, and each surface commits
+    ///         to a single mode (tontine vs group pot).
     bool public immutable tontineMode;
     uint32 public immutable roundDuration;
     uint128 public immutable roundContribution;
@@ -125,9 +127,33 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     address[] private _members;
     mapping(address => bool) public isMember;
 
-    /// Raw amounts each member has transferred in. Used for redemption (Phase 3).
+    /// Gross cumulative amount each member has transferred in. Informational
+    /// only (never decreases) — redemption is driven by `shares`, not this.
     mapping(address => uint128) public deposited;
     uint128 public totalDeposited;
+
+    /// @notice Group-pot redemption accounting (non-tontine mode only). Each
+    ///         deposit mints `shares` proportional to the live pot; each
+    ///         collective spend dilutes every share equally. `withdraw` burns
+    ///         shares for the matching slice of `potBalance`, so a member
+    ///         always recovers their fair share of whatever the group hasn't
+    ///         spent yet.
+    /// @dev    `shares[a]` is the RAW recorded balance and may be stale: when a
+    ///         spend drains the pot to exactly zero the pool is retired to a new
+    ///         `shareEpoch`, invalidating every outstanding share in O(1) (they
+    ///         were worth 0 anyway). Stale shares are re-zeroed on the owner's
+    ///         next deposit. Use `withdrawableOf` for the truthful value.
+    mapping(address => uint256) public shares;
+    uint256 public totalShares;
+    /// @notice Pool epoch. Bumped whenever a spend empties the pot; shares
+    ///         tagged with an older epoch are dead and re-zeroed on next touch.
+    uint64 public shareEpoch;
+    mapping(address => uint64) private _shareEpochOf;
+    /// @notice Live count of pot tokens held for the group-pot pool. Tracked
+    ///         internally (not read from the Hub) so withdrawals never depend
+    ///         on an external balance call. Stays in sync because every inflow
+    ///         runs through `_credit` and every outflow through a guarded spend.
+    uint128 public potBalance;
 
     struct Proposal {
         address proposer;
@@ -179,6 +205,7 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         uint32 nextClaimAt
     );
     event Deposit(address indexed from, uint128 amount, uint128 newTotal);
+    event Withdrawn(address indexed account, uint256 shares, uint128 amount);
     event Proposed(
         uint256 indexed id,
         address indexed proposer,
@@ -222,6 +249,10 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     error NoStakeMode();
     error CycleAlreadyComplete();
     error TontineBankrupt();
+    error FreeSpendInTontine();
+    error BadRecipient();
+    error NotGroupPot();
+    error BadShareAmount();
 
     modifier onlyMember() {
         if (!isMember[msg.sender]) revert NotMember();
@@ -249,6 +280,11 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
             // slither-disable-next-line timestamp
             if (_tontine.firstClaimAt < block.timestamp) revert BadTontineParams();
             if (_tontine.cycleRounds == 0) revert BadTontineParams();
+            // ROSCA fairness: each member must get the same number of turns, so
+            // the cycle length must be a whole multiple of the member count.
+            // Otherwise members whose turn never comes deposit without ever
+            // claiming, and there is no redemption path to recover those funds.
+            if (_tontine.cycleRounds % members_.length != 0) revert BadTontineParams();
         } else {
             if (
                 _tontine.roundDuration != 0
@@ -376,12 +412,9 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         uint128 sum = 0;
         for (uint256 i = 0; i < len; i++) {
             if (ids[i] != potTokenId) revert WrongTokenId();
-            uint128 v = values[i].toUint128();
-            deposited[from] += v;
-            sum += v;
+            sum += values[i].toUint128();
         }
-        totalDeposited += sum;
-        emit Deposit(from, sum, totalDeposited);
+        _credit(from, sum);
         return IERC1155Receiver.onERC1155BatchReceived.selector;
     }
 
@@ -394,7 +427,40 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     function _credit(address from, uint128 amount) internal {
         deposited[from] += amount;
         totalDeposited += amount;
+        // Group-pot mode mints redeemable shares against the live pot so the
+        // member can `withdraw` their proportional slice later. Tontine mode
+        // skips this — its flow is the rotation + stake refund.
+        if (!tontineMode) {
+            // A prior spend may have retired the pool to a newer epoch; any
+            // shares the depositor still carries from the old epoch are dead.
+            if (_shareEpochOf[from] != shareEpoch) {
+                shares[from] = 0;
+                _shareEpochOf[from] = shareEpoch;
+            }
+            uint256 minted = (totalShares == 0 || potBalance == 0)
+                ? amount
+                : (uint256(amount) * totalShares) / potBalance;
+            shares[from] += minted;
+            totalShares += minted;
+            potBalance += amount;
+        }
         emit Deposit(from, amount, totalDeposited);
+    }
+
+    /// @dev Owner's redeemable shares, or 0 if they belong to a retired epoch.
+    function _liveShares(address a) internal view returns (uint256) {
+        return _shareEpochOf[a] == shareEpoch ? shares[a] : 0;
+    }
+
+    /// @dev Run after every spend. If the pot is now empty, retire the share
+    ///      pool: outstanding shares (worth 0) are invalidated by bumping the
+    ///      epoch, so the next deposit re-seeds a clean 1:1 pool instead of
+    ///      letting dead shares dilute it.
+    function _settleDrain() private {
+        if (potBalance == 0 && totalShares != 0) {
+            totalShares = 0;
+            shareEpoch += 1;
+        }
     }
 
     // ── spending ────────────────────────────────────────────────────────────
@@ -405,9 +471,17 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         uint128 amount,
         string calldata memo
     ) external onlyMember nonReentrant {
+        // In tontine mode the pot is reserved for the rotation; free-form
+        // spending could starve the next claim. Free spending lives only on
+        // the "group pot" surface (tontineMode == false).
+        if (tontineMode) revert FreeSpendInTontine();
         if (recipient == address(0)) revert ZeroAddress();
+        if (recipient == address(this)) revert BadRecipient();
         if (amount > smallTxThreshold) revert AmountExceedsThreshold();
         if (bytes(memo).length > MAX_MEMO_LEN) revert MemoTooLong();
+        // Reverts if the pot can't cover it — dilutes every share equally.
+        potBalance -= amount;
+        _settleDrain();
         emit SmallSpend(msg.sender, recipient, amount, memo);
         _transferOut(recipient, amount);
     }
@@ -418,7 +492,9 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         uint128 amount,
         string calldata memo
     ) external onlyMember returns (uint256 id) {
+        if (tontineMode) revert FreeSpendInTontine();
         if (recipient == address(0)) revert ZeroAddress();
+        if (recipient == address(this)) revert BadRecipient();
         if (bytes(memo).length > MAX_MEMO_LEN) revert MemoTooLong();
         uint32 deadline = uint32(block.timestamp) + votingPeriod;
         id = _proposals.length;
@@ -462,8 +538,41 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         if (p.executed) revert AlreadyExecuted();
         if (!_quorumReached(p.approvals)) revert QuorumNotReached();
         p.executed = true;
+        // Reverts if the pot can't cover it — dilutes every share equally.
+        potBalance -= p.amount;
+        _settleDrain();
         emit Executed(id, p.recipient, p.amount);
         _transferOut(p.recipient, p.amount);
+    }
+
+    // ── redemption (group-pot mode) ──────────────────────────────────────────
+
+    /// @notice Redeem `shareAmount` of your pot shares for the matching slice
+    ///         of pot tokens. Group-pot mode only — tontine kitties move funds
+    ///         via `claimRound` / `withdrawStake`. Collective spends already
+    ///         made by the group reduce the value of every share equally, so
+    ///         you receive your fair share of what remains, never more than the
+    ///         pot holds.
+    function withdraw(uint256 shareAmount) external nonReentrant returns (uint128 amount) {
+        if (tontineMode) revert NotGroupPot();
+        uint256 s = _liveShares(msg.sender);
+        if (shareAmount == 0 || shareAmount > s) revert BadShareAmount();
+
+        // shareAmount <= totalShares, so amount <= potBalance and fits uint128.
+        amount = uint128((uint256(shareAmount) * potBalance) / totalShares);
+        shares[msg.sender] = s - shareAmount;
+        totalShares -= shareAmount;
+        potBalance -= amount;
+
+        emit Withdrawn(msg.sender, shareAmount, amount);
+        _transferOut(msg.sender, amount);
+    }
+
+    /// @notice Pot tokens `account` would receive by burning all their shares
+    ///         right now. Front-end helper for the "withdraw" button.
+    function withdrawableOf(address account) external view returns (uint128) {
+        if (totalShares == 0) return 0;
+        return uint128((uint256(_liveShares(account)) * potBalance) / totalShares);
     }
 
     // ── tontine ─────────────────────────────────────────────────────────────
@@ -523,6 +632,26 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
         _transferOut(claimer, payout);
     }
 
+    /// @notice Liveness escape hatch. If the rotation stalls — e.g. a member
+    ///         defaults and their stake can no longer cover the slash, so every
+    ///         `claimRound` reverts `TontineBankrupt` — any member can force the
+    ///         kitty into `Phase.Complete` once the current round has been
+    ///         claimable for more than a full extra `roundDuration` without
+    ///         progressing. This unblocks `withdrawStake` so honest members
+    ///         recover their remaining stake instead of being frozen forever.
+    /// @dev    Does NOT pay any pending round; residual round deposits are
+    ///         settled socially off-chain (the trust graph is the backstop).
+    ///         The grace window (nextClaimAt + roundDuration) guarantees the
+    ///         current claimer keeps their full turn before anyone can exit.
+    function forceComplete() external onlyMember {
+        if (!tontineMode) revert NotTontine();
+        if (phase != Phase.Active) revert NotActive();
+        // slither-disable-next-line timestamp
+        if (block.timestamp <= uint256(nextClaimAt) + roundDuration) revert RoundNotReady();
+        phase = Phase.Complete;
+        emit PhaseChanged(Phase.Complete);
+    }
+
     /// @dev For each member, compare their cumulative deposits to the
     ///      expected mark for round R. If short, slash 2x the shortfall
     ///      from their stake and credit the shortfall into `deposited` so
@@ -530,13 +659,13 @@ contract KittyGovernance is IERC1155Receiver, IERC165, ReentrancyGuard {
     ///      Reverts TontineBankrupt if a member's stake can't cover.
     function _detectAndSlash(uint32 round) internal {
         uint256 expected = uint256(roundContribution) * (uint256(round) + 1);
-        uint256 memberCount = _members.length;
-        for (uint256 i = 0; i < memberCount; i++) {
+        uint256 n = _members.length;
+        for (uint256 i = 0; i < n; i++) {
             address m = _members[i];
             uint256 dep = deposited[m];
             if (dep >= expected) continue;
 
-            uint128 shortfall = uint128(expected - dep);
+            uint128 shortfall = (expected - dep).toUint128();
             uint128 penalty = shortfall * 2;
             if (penalty > staked[m]) revert TontineBankrupt();
 
