@@ -9,6 +9,7 @@ import KittyDetailRoute from './routes/kitty-detail';
 import KittyJoinRoute from './routes/kitty-join';
 import KittyNewRoute from './routes/kitty-new';
 import KittyProposeRoute from './routes/kitty-propose';
+import ServicesDetailRoute from './routes/services-detail';
 import ServicesEditRoute from './routes/services-edit';
 import ServicesMineRoute from './routes/services-mine';
 import ServicesNewRoute from './routes/services-new';
@@ -31,6 +32,7 @@ export default function App() {
         <Route path="/services" element={<ServicesRoute />} />
         <Route path="/services/new" element={<ServicesNewRoute />} />
         <Route path="/services/mine" element={<ServicesMineRoute />} />
+        <Route path="/services/:id" element={<ServicesDetailRoute />} />
         <Route path="/services/:id/edit" element={<ServicesEditRoute />} />
         <Route path="/funding" element={<FundingRoute />} />
         <Route path="/kitty/new" element={<KittyNewRoute />} />

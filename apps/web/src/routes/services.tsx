@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Store } from 'lucide-react';
+import { ArrowDownUp, Plus, Search, Store } from 'lucide-react';
 
 import { AppFooter } from '@/components/AppFooter';
 import { BurgerButton } from '@/components/BurgerButton';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { InviteButton } from '@/components/InviteButton';
+import { Input } from '@/components/ui/input';
 import { InviterBanner } from '@/components/pot/InviterBanner';
 import { Logo } from '@/components/Logo';
 import { MainTabs } from '@/components/MainTabs';
@@ -16,8 +17,26 @@ import { PaySheet } from '@/components/services/PaySheet';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
-import { readAllActiveServices, type ServiceView } from '@/lib/services-reader';
+import {
+  ratingAverage,
+  readAllActiveServices,
+  type ServiceView,
+} from '@/lib/services-reader';
+import { readServiceStats, type ServiceStats } from '@/lib/global-stats';
+import { formatCrc } from '@/lib/utils';
 import { useWallet } from '@/hooks/use-wallet';
+
+/// Sort options exposed by the search bar. Keep the list short — every
+/// option corresponds to a different mental model the buyer might have
+/// (recency, affordability, social proof, quality).
+type SortKey = 'newest' | 'cheapest' | 'mostPaid' | 'highestRated';
+
+const SORT_LABEL: Record<SortKey, string> = {
+  newest: 'Newest',
+  cheapest: 'Cheapest',
+  mostPaid: 'Most paid',
+  highestRated: 'Highest rated',
+};
 
 /// Services tab — default app surface. Loads the full registry of active
 /// services, surfaces them with rating + trust state, and routes to the
@@ -27,20 +46,29 @@ export default function ServicesRoute() {
   const registryReady = Boolean(CIRCLES_CONFIG.serviceRegistryAddress);
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
+  const [stats, setStats] = useState<ServiceStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<ServiceView | null>(null);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
 
   const fetchServices = useCallback(async () => {
     if (!registryReady) {
       setServices([]);
+      setStats(null);
       return;
     }
     try {
-      const list = await readAllActiveServices(address ?? undefined);
+      const [list, agg] = await Promise.all([
+        readAllActiveServices(address ?? undefined),
+        readServiceStats(),
+      ]);
       setServices(list);
+      setStats(agg);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
       setServices([]);
+      setStats(null);
     }
   }, [address, registryReady]);
 
@@ -57,6 +85,39 @@ export default function ServicesRoute() {
       cancelled = true;
     };
   }, [fetchServices]);
+
+  /// Client-side filter + sort. Cheap at hackathon scale (tens of services);
+  /// past that we'd push the work to the registry or a subgraph.
+  const filtered = useMemo(() => {
+    if (!services) return null;
+    const needle = query.trim().toLowerCase();
+    const matched = needle
+      ? services.filter(
+          (s) =>
+            s.title.toLowerCase().includes(needle) ||
+            s.description.toLowerCase().includes(needle),
+        )
+      : services;
+    const sorted = [...matched].sort((a, b) => {
+      switch (sort) {
+        case 'cheapest':
+          if (a.priceCrc === b.priceCrc) return 0;
+          return a.priceCrc < b.priceCrc ? -1 : 1;
+        case 'mostPaid':
+          if (a.timesPaid === b.timesPaid) return 0;
+          return a.timesPaid > b.timesPaid ? -1 : 1;
+        case 'highestRated': {
+          const ra = ratingAverage(a) ?? -1;
+          const rb = ratingAverage(b) ?? -1;
+          return rb - ra;
+        }
+        case 'newest':
+        default:
+          return b.createdAt - a.createdAt;
+      }
+    });
+    return sorted;
+  }, [services, query, sort]);
 
   function onPay(service: ServiceView) {
     setPayTarget(service);
@@ -94,12 +155,49 @@ export default function ServicesRoute() {
 
       <InviterBanner selfAddress={address} />
 
+      {stats && stats.servicesPublished > 0 && (
+        <div className="grid grid-cols-3 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3 text-center">
+          <HeroStat label="Active" value={stats.activeServices.toString()} />
+          <HeroStat label="Providers" value={stats.activeProviders.toString()} />
+          <HeroStat label="CRC paid" value={formatCrc(stats.totalCrcPaid)} />
+        </div>
+      )}
+
       <Link
         to="/services/new"
         className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_10px_28px_-12px_var(--color-shadow)] hover:brightness-110"
       >
         <Plus className="size-4" /> Publish a service
       </Link>
+
+      {services !== null && services.length > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-muted)]" />
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search services"
+              className="pl-9"
+            />
+          </div>
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-muted)]">
+            <ArrowDownUp className="size-3.5" />
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="bg-transparent text-sm text-[var(--color-text)] outline-none"
+            >
+              {Object.entries(SORT_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {!registryReady && (
         <Card className="border-rose-500/40 bg-rose-500/5">
@@ -158,9 +256,20 @@ export default function ServicesRoute() {
         </Card>
       )}
 
-      {services !== null && services.length > 0 && (
+      {filtered !== null && filtered.length === 0 && services && services.length > 0 && (
+        <Card>
+          <CardContent>
+            <p className="text-sm text-[var(--color-muted)]">
+              No services match "<span className="font-medium">{query}</span>". Try another
+              term or clear the search.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {filtered !== null && filtered.length > 0 && (
         <section className="flex flex-col gap-3">
-          {services.map((s) => (
+          {filtered.map((s) => (
             <ServiceCard
               key={s.id.toString()}
               service={s}
@@ -184,5 +293,16 @@ export default function ServicesRoute() {
         />
       )}
     </main>
+  );
+}
+
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-mono text-base leading-tight">{value}</span>
+      <span className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
+        {label}
+      </span>
+    </div>
   );
 }

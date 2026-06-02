@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Check, Clock, Star, Users } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
@@ -26,14 +27,17 @@ export function ServiceCard({ service, hasViewer, onPay }: Props) {
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
+          <Link
+            to={`/services/${service.id.toString()}`}
+            className="min-w-0 flex-1 hover:opacity-90"
+          >
             <p className="text-base font-semibold leading-tight">{service.title}</p>
             {service.description && (
               <p className="mt-1 line-clamp-2 text-xs text-[var(--color-muted)]">
                 {service.description}
               </p>
             )}
-          </div>
+          </Link>
           <div className="shrink-0 text-right">
             <p className="font-mono text-lg leading-tight">
               {formatCrc(service.priceCrc)}

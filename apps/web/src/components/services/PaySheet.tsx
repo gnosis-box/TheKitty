@@ -3,12 +3,18 @@ import { toast } from 'sonner';
 import { Check, ShieldCheck, Wallet, X } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
+import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/hooks/use-wallet';
 import { buildLogPaymentTx } from '@/lib/tx-builders';
 import { TRUST_EXPIRY_NEVER } from '@/lib/tx-builders';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
 import type { Address } from '@/types/kitty';
+
+/// The `memo` arg on `ServiceRegistry.logPayment(uint64,uint128,string)` is
+/// bound to 256 chars by the contract. Mirror that as a hard cap in the UI
+/// so we never produce a tx the contract will revert on.
+const MAX_MEMO_LEN = 256;
 
 interface Props {
   service: ServiceView;
@@ -28,6 +34,7 @@ type PaySource = 'wallet';
 export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const { address, isConnected, circlesSdk, sendTransactions } = useWallet();
   const [source] = useState<PaySource>('wallet');
+  const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const viewer = address as Address | null;
@@ -89,10 +96,12 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
       ];
 
       // logPayment lives on our own ServiceRegistry, so it stays viem-encoded.
+      // The memo is optional — empty string means "no note", which the
+      // contract accepts. Calendar-style services use it for "Sat 14h" etc.
       const logTx = buildLogPaymentTx({
         serviceId: service.id,
         amount: service.priceCrc,
-        memo: '',
+        memo: memo.trim(),
       });
 
       // Convert SDK TransactionRequests (bigint `value`) to the miniapp host
@@ -190,6 +199,23 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
               disabled
             />
           </div>
+        </section>
+
+        <section className="mt-4">
+          <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">
+            Note for the provider · optional
+          </p>
+          <Textarea
+            className="mt-2"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value.slice(0, MAX_MEMO_LEN))}
+            placeholder="e.g. Sat 14h, mat haircut"
+            maxLength={MAX_MEMO_LEN}
+            rows={2}
+          />
+          <p className="mt-1 text-right text-[10px] text-[var(--color-muted)]">
+            {memo.length} / {MAX_MEMO_LEN}
+          </p>
         </section>
 
         {!trusted && (
