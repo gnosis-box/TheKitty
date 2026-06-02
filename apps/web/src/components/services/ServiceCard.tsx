@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Check, Clock, Star, Users } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
+import { TrustButton } from '@/components/services/TrustButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { ratingAverage, type ServiceView } from '@/lib/services-reader';
 import { formatCrc } from '@/lib/utils';
@@ -12,6 +13,9 @@ interface Props {
   /// "trusted" pill (✓) vs the "trust to pay" hint.
   hasViewer: boolean;
   onPay?: (service: ServiceView) => void;
+  /// Called when the viewer extends trust to the provider so the parent
+  /// can re-fetch the registry (the card's `trustedByViewer` flips true).
+  onTrusted?: () => void;
 }
 
 /// Compact card surfacing one service in the registry:
@@ -19,7 +23,7 @@ interface Props {
 /// count in the middle, and a single CTA that adapts based on whether the
 /// viewer already trusts the provider. Tapping the CTA delegates to
 /// `onPay`, which the parent uses to open the pay flow (W6).
-export function ServiceCard({ service, hasViewer, onPay }: Props) {
+export function ServiceCard({ service, hasViewer, onPay, onTrusted }: Props) {
   const avg = ratingAverage(service);
   const trusted = service.trustedByViewer === true;
 
@@ -60,6 +64,14 @@ export function ServiceCard({ service, hasViewer, onPay }: Props) {
           >
             <MemberAvatar address={service.provider} size="xs" />
           </Link>
+          {hasViewer && (
+            <TrustButton
+              trustee={service.provider}
+              trusted={service.trustedByViewer}
+              onTrusted={onTrusted}
+              showAffirmation={false}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)]">
             {avg !== null && (
               <span className="inline-flex items-center gap-0.5">

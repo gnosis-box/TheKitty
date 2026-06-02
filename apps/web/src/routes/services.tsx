@@ -264,6 +264,9 @@ export default function ServicesRoute() {
               service={s}
               hasViewer={Boolean(address)}
               onPay={onPay}
+              onTrusted={() => {
+                void fetchServices();
+              }}
             />
           ))}
         </section>

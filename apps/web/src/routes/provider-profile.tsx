@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Coins, HandCoins, Share2, Star, Store } from 'lucide-react';
+import { ArrowLeft, Check, Coins, Copy, HandCoins, Share2, Star, Store } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { TrustButton } from '@/components/services/TrustButton';
+import { CIRCLES_CONFIG } from '@/lib/circles-config';
+import { hubV2Abi } from '@/lib/abi/hub-v2';
+import { getPublicClient } from '@/lib/public-client';
 import {
   ratingAverage,
   readMyServices,
@@ -39,17 +43,30 @@ export default function ProviderProfileRoute() {
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
   const [openRateFor, setOpenRateFor] = useState<string | null>(null);
   const [rating, setRating] = useState(false);
+  const [trustedByViewer, setTrustedByViewer] = useState<boolean | undefined>(
+    undefined,
+  );
   const [error, setError] = useState<string | null>(null);
 
   async function refresh(p: Address) {
-    const [list, paid] = await Promise.all([
+    const isSelfNow = viewer && viewer.toLowerCase() === p.toLowerCase();
+    const [list, paid, isTrustedRaw] = await Promise.all([
       readMyServices(p),
-      viewer && viewer.toLowerCase() !== p.toLowerCase()
+      !isSelfNow && viewer
         ? readPaidServiceIdsByPayer(viewer as Address, p)
         : Promise.resolve(new Set<string>()),
+      !isSelfNow && viewer
+        ? (getPublicClient().readContract({
+            abi: hubV2Abi,
+            address: CIRCLES_CONFIG.v2HubAddress,
+            functionName: 'isTrusted',
+            args: [viewer as Address, p],
+          }) as Promise<boolean>)
+        : Promise.resolve(undefined as boolean | undefined),
     ]);
     setServices(list);
     setPaidIds(paid);
+    setTrustedByViewer(isTrustedRaw);
   }
 
   useEffect(() => {
@@ -168,10 +185,20 @@ export default function ProviderProfileRoute() {
             <div className="flex items-center gap-3">
               <MemberAvatar address={provider} size="md" />
               {isSelf && <Badge tone="neutral">You</Badge>}
+              <div className="ml-auto">
+                <TrustButton
+                  trustee={provider}
+                  trusted={trustedByViewer}
+                  onTrusted={() => provider && void refresh(provider)}
+                />
+              </div>
             </div>
-            <p className="mt-2 font-mono text-xs text-[var(--color-muted)]">
-              {shortAddress(provider)}
-            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="font-mono text-xs text-[var(--color-muted)]">
+                {shortAddress(provider)}
+              </p>
+              <CopyAddressButton address={provider} />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -334,6 +361,39 @@ export default function ProviderProfileRoute() {
         </section>
       )}
     </main>
+  );
+}
+
+/// Tiny inline button that copies the full Circles address to the
+/// clipboard. The visible address is truncated (shortAddress) so we need
+/// a way to grab the canonical hex without manual DOM selection — useful
+/// for pasting into gnosisscan, Circles app, group invites, etc.
+function CopyAddressButton({ address }: { address: Address }) {
+  const [copied, setCopied] = useState(false);
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      toast.success('Address copied');
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Could not copy');
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      aria-label="Copy address"
+      title={address}
+      className="inline-flex size-6 items-center justify-center rounded-md text-[var(--color-muted)] hover:bg-[var(--color-surface-hi)] hover:text-[var(--color-text)]"
+    >
+      {copied ? (
+        <Check className="size-3.5 text-emerald-500" />
+      ) : (
+        <Copy className="size-3.5" />
+      )}
+    </button>
   );
 }
 

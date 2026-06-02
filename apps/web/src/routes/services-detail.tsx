@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { PaySheet } from '@/components/services/PaySheet';
+import { TrustButton } from '@/components/services/TrustButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWallet } from '@/hooks/use-wallet';
 import {
@@ -238,25 +239,29 @@ export default function ServicesDetailRoute() {
             )}
           </div>
 
-          <Link
-            to={`/providers/${service.provider.toLowerCase()}`}
-            className="mt-4 flex items-center gap-3 rounded-xl hover:bg-[var(--color-surface-hi)]"
-          >
-            <MemberAvatar address={service.provider} size="sm" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {shortAddress(service.provider)}
-              </p>
-              <p className="text-[10px] text-[var(--color-muted)]">
-                Provider · see all services
-              </p>
-            </div>
-            {service.trustedByViewer === true && (
-              <Badge tone="neutral">
-                <Check className="mr-1 size-3" /> Trusted
-              </Badge>
-            )}
-          </Link>
+          <div className="mt-4 flex items-center gap-3">
+            <Link
+              to={`/providers/${service.provider.toLowerCase()}`}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl hover:bg-[var(--color-surface-hi)]"
+            >
+              <MemberAvatar address={service.provider} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {shortAddress(service.provider)}
+                </p>
+                <p className="text-[10px] text-[var(--color-muted)]">
+                  Provider · see all services
+                </p>
+              </div>
+            </Link>
+            <TrustButton
+              trustee={service.provider}
+              trusted={service.trustedByViewer}
+              onTrusted={() => {
+                void load();
+              }}
+            />
+          </div>
         </CardContent>
       </Card>
 
