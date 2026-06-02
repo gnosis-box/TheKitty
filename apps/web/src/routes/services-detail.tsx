@@ -24,7 +24,9 @@ import { useWallet } from '@/hooks/use-wallet';
 import {
   ratingAverage,
   readMyServices,
+  readRatingBreakdown,
   readServiceById,
+  type RatingBreakdown,
   type ServiceView,
 } from '@/lib/services-reader';
 import { formatCrc, shortAddress } from '@/lib/utils';
@@ -56,6 +58,7 @@ export default function ServicesDetailRoute() {
 
   const [service, setService] = useState<ServiceView | null>(null);
   const [siblings, setSiblings] = useState<ServiceView[]>([]);
+  const [breakdown, setBreakdown] = useState<RatingBreakdown | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -96,12 +99,17 @@ export default function ServicesDetailRoute() {
     setService(s);
     setLoaded(true);
 
-    // Provider's other services (active only, excluding the current one).
+    // Provider's other services + per-star breakdown, both in parallel.
     try {
-      const all = await readMyServices(s.provider);
+      const [all, bd] = await Promise.all([
+        readMyServices(s.provider),
+        readRatingBreakdown(s.id),
+      ]);
       setSiblings(all.filter((x) => x.active && x.id !== s.id));
+      setBreakdown(bd);
     } catch {
       setSiblings([]);
+      setBreakdown(null);
     }
   }
 
@@ -230,20 +238,25 @@ export default function ServicesDetailRoute() {
             )}
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
+          <Link
+            to={`/providers/${service.provider.toLowerCase()}`}
+            className="mt-4 flex items-center gap-3 rounded-xl hover:bg-[var(--color-surface-hi)]"
+          >
             <MemberAvatar address={service.provider} size="sm" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">
                 {shortAddress(service.provider)}
               </p>
-              <p className="text-[10px] text-[var(--color-muted)]">Provider</p>
+              <p className="text-[10px] text-[var(--color-muted)]">
+                Provider · see all services
+              </p>
             </div>
             {service.trustedByViewer === true && (
               <Badge tone="neutral">
                 <Check className="mr-1 size-3" /> Trusted
               </Badge>
             )}
-          </div>
+          </Link>
         </CardContent>
       </Card>
 
@@ -269,6 +282,13 @@ export default function ServicesDetailRoute() {
             />
             <Stat label="CRC paid" value={formatCrc(service.totalPaid)} hint="lifetime" />
           </div>
+
+          {breakdown && (
+            <RatingBars
+              breakdown={breakdown}
+              totalRaters={Number(service.ratingsCount)}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -366,6 +386,45 @@ export default function ServicesDetailRoute() {
         />
       )}
     </main>
+  );
+}
+
+interface RatingBarsProps {
+  breakdown: RatingBreakdown;
+  totalRaters: number;
+}
+
+/// Per-star distribution: one row per level (5★ at the top), with a fill
+/// bar proportional to that bucket's share of the *busiest* bucket. Same
+/// pattern as App Store / Play Store reviews.
+function RatingBars({ breakdown, totalRaters }: RatingBarsProps) {
+  if (totalRaters === 0) return null;
+  const max = Math.max(breakdown[1], breakdown[2], breakdown[3], breakdown[4], breakdown[5], 1);
+  const levels = [5, 4, 3, 2, 1] as const;
+  return (
+    <div className="mt-4 flex flex-col gap-1.5">
+      {levels.map((n) => {
+        const count = breakdown[n];
+        const width = `${(count / max) * 100}%`;
+        return (
+          <div key={n} className="flex items-center gap-2 text-[11px]">
+            <span className="inline-flex w-6 items-center gap-0.5 font-mono">
+              {n}
+              <Star className="size-3 fill-current text-amber-500" />
+            </span>
+            <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-hi)]">
+              <div
+                className="absolute inset-y-0 left-0 bg-amber-500"
+                style={{ width }}
+              />
+            </div>
+            <span className="w-6 text-right font-mono text-[var(--color-muted)]">
+              {count}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

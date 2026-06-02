@@ -14,6 +14,7 @@ import {
   Info,
   Settings,
   Store,
+  User,
   Wallet,
   X,
 } from 'lucide-react';
@@ -51,24 +52,52 @@ export function useDrawer(): DrawerContextValue {
   return ctx;
 }
 
-const NAV_LINKS: Array<{ to: string; label: string; icon: ReactNode }> = [
+interface NavLink {
+  to: string;
+  label: string;
+  icon: ReactNode;
+  /// Set to `true` for entries that require the viewer's address (the
+  /// drawer will inject the address into a `:address` placeholder in `to`
+  /// before rendering, and hide the entry when disconnected).
+  needsAddress?: boolean;
+}
+
+const NAV_LINKS: NavLink[] = [
   { to: '/services', label: 'Services', icon: <Store className="size-4" /> },
+  { to: '/providers/:address', label: 'My profile', icon: <User className="size-4" />, needsAddress: true },
   { to: '/services/mine', label: 'My services', icon: <Settings className="size-4" /> },
   { to: '/funding', label: 'Funding', icon: <Wallet className="size-4" /> },
   { to: '/stats', label: 'Stats', icon: <ChartBar className="size-4" /> },
   { to: '/about', label: 'About', icon: <Info className="size-4" /> },
 ];
 
-/// Among the nav entries, pick the deepest one whose `to` matches the
-/// current path. Without this, both `/services` and `/services/mine`
+/// Resolve `:address` placeholders against the current viewer + drop
+/// entries that need an address when disconnected. Returns the list the
+/// drawer should actually render.
+function resolveNavLinks(viewer: string | null): Array<NavLink & { resolvedTo: string }> {
+  const out: Array<NavLink & { resolvedTo: string }> = [];
+  for (const link of NAV_LINKS) {
+    if (link.needsAddress) {
+      if (!viewer) continue;
+      out.push({ ...link, resolvedTo: link.to.replace(':address', viewer.toLowerCase()) });
+    } else {
+      out.push({ ...link, resolvedTo: link.to });
+    }
+  }
+  return out;
+}
+
+/// Among the nav entries, pick the deepest one whose `resolvedTo` matches
+/// the current path. Without this, both `/services` and `/services/mine`
 /// would light up on `/services/mine` because the parent's `to` is a
 /// prefix of the child's path.
-function pickActiveTo(pathname: string): string | null {
+function pickActiveTo(pathname: string, links: Array<{ resolvedTo: string }>): string | null {
   let best: string | null = null;
-  for (const link of NAV_LINKS) {
-    const matches = pathname === link.to || pathname.startsWith(link.to + '/');
-    if (matches && (best === null || link.to.length > best.length)) {
-      best = link.to;
+  for (const link of links) {
+    const matches =
+      pathname === link.resolvedTo || pathname.startsWith(link.resolvedTo + '/');
+    if (matches && (best === null || link.resolvedTo.length > best.length)) {
+      best = link.resolvedTo;
     }
   }
   return best;
@@ -83,7 +112,8 @@ function AppDrawer() {
   const { address, isConnected } = useWallet();
   const close = useCallback(() => setOpen(false), [setOpen]);
   const { pathname } = useLocation();
-  const activeTo = pickActiveTo(pathname);
+  const navLinks = resolveNavLinks(address ?? null);
+  const activeTo = pickActiveTo(pathname, navLinks);
 
   // Lock body scroll while the drawer is open + close on Esc.
   useEffect(() => {
@@ -136,17 +166,21 @@ function AppDrawer() {
 
         <section className="mt-5 px-5">
           {isConnected && address ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3">
+            <Link
+              to={`/providers/${address.toLowerCase()}`}
+              onClick={close}
+              className="flex items-center gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3 hover:bg-[var(--color-border)]"
+            >
               <MemberAvatar address={address as Address} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">
-                  Connected
+                  Connected · view profile
                 </p>
                 <p className="truncate text-sm font-medium">
                   {shortAddress(address as Address)}
                 </p>
               </div>
-            </div>
+            </Link>
           ) : (
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3">
               <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">
@@ -160,13 +194,13 @@ function AppDrawer() {
         </section>
 
         <nav className="mt-5 flex-1 px-3">
-          {NAV_LINKS.map((link) => (
+          {navLinks.map((link) => (
             <DrawerLink
               key={link.to}
-              to={link.to}
+              to={link.resolvedTo}
               icon={link.icon}
               label={link.label}
-              active={activeTo === link.to}
+              active={activeTo === link.resolvedTo}
               onSelect={close}
             />
           ))}

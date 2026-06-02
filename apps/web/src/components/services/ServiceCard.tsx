@@ -53,7 +53,13 @@ export function ServiceCard({ service, hasViewer, onPay }: Props) {
         </div>
 
         <div className="mt-3 flex items-center gap-3">
-          <MemberAvatar address={service.provider} size="xs" />
+          <Link
+            to={`/providers/${service.provider.toLowerCase()}`}
+            className="hover:opacity-80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MemberAvatar address={service.provider} size="xs" />
+          </Link>
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)]">
             {avg !== null && (
               <span className="inline-flex items-center gap-0.5">

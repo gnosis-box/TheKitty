@@ -134,7 +134,13 @@ export default function ServicesRoute() {
           {isConnected && address ? (
             <>
               <InviteButton variant="pill" />
-              <MemberAvatar address={address} size="sm" />
+              <Link
+                to={`/providers/${address.toLowerCase()}`}
+                aria-label="My profile"
+                className="rounded-full hover:opacity-80"
+              >
+                <MemberAvatar address={address} size="sm" />
+              </Link>
             </>
           ) : (
             <Badge tone="neutral">{isMiniappHost ? 'Waiting…' : 'Standalone'}</Badge>

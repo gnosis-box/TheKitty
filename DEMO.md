@@ -1,157 +1,187 @@
-# Demo runbook — Circles Garage
+# Demo runbook — Circles Garage cycle 3
 
-90 seconds, mobile-first, pre-loaded state, one live claim.
+90 seconds, mobile-first, pre-loaded state, one live pay flow.
 
 ## Pitch (10s, oral)
 
-> Sou-sou, tanda, hui — tontines. Hundreds of millions of people save
-> together this way. Whoever runs the round holds the money. We replaced
-> the organizer with a smart contract on Circles. Every round, the pot
-> rotates to the next member, on-chain.
+> Your hourly Circles UBI is small, but pooled with people you trust
+> it can pay for something one of you actually needs this week — a
+> haircut, a guitar lesson, a brunch. The Kitty is two halves: a
+> services board where humans publish what they offer in CRC, and
+> tontines where a few people pool CRC and take turns spending it on
+> each other. Built on Circles.
 
 ## The 90-second story arc
 
 | t | Screen | Spoken beat |
 |---|---|---|
-| 0-10s | Home of The Kitty, demo tontine visible in the list with the orange "tontine" badge | "Six members. Fifty CRC each. Monthly round." |
-| 10-25s | Open the kitty → detail page. TontineCard sits front and center: Round N, current claimer avatar, countdown ticking | "Round 3 of 6. Maria's turn. The pot is 300 CRC." |
-| 25-40s | Rotation roster scrolls: two checkmarks past, one highlighted current, three faded upcoming | "Past payouts are already on-chain. Anyone can audit." |
-| 40-70s | Tap the big primary CTA "Claim 300 CRC" → Safe sheet → sign → confirmation animation | "Maria claims her round. One transaction. The contract verifies it's her turn and rotates automatically." |
-| 70-85s | Balance updates, "your turn" badge moves to the next member, countdown resets | "Next month, the rotation moves to the next member. No organizer ever held the pot." |
-| 85-90s | Brief return to home, demo tontine on the list now shows the next round | "Programmable mutual aid on Circles. Done." |
+| 0-10s | `/services` open in playground. Two service cards visible (e.g. "Haircut at my studio · 24 CRC", "Sound design lesson · 60 CRC") | "Two humans, two services, priced in CRC." |
+| 10-25s | Tap the first card → detail page. Title + description + price + provider chip + 5★ rating bar + provider's other services | "One URL per service. Shareable. You can see what others paid, what they rated." |
+| 25-40s | Provider chip on detail → tap → `/providers/0x…`: all of that provider's services | "Every provider has a profile — their full catalog, one link in bio." |
+| 40-55s | Back to `/services/3` → tap **Trust + pay 24 CRC** → PaySheet opens | "One signature: trust the provider, send the CRC, log the payment on-chain." |
+| 55-65s | Source picker shows "My Circles wallet". Add a memo: *"Sat 14h"* | "The memo travels with the payment so calendar services know the slot." |
+| 65-80s | Confirm → host signature prompt → tx confirms → sheet swaps to "How was it?" with 5 tap-to-rate stars | "After every payment, you can rate. One slot per rater — re-rating overwrites, no spam." |
+| 80-90s | Tap 5★ → rating fires → toast "Thanks, 5★ saved" → back on `/services` with the card showing one more payment | "Two-sided economy between Circles humans. Done." |
 
 ## Pre-demo checklist
 
-Run the day before. The current production factory is
-`0x880E213224Ce5B6B8a01A21D4318819c67146533` on Gnosis Chain (chain id
-100). The front-end is deployed at `https://thekitty.gnosis.box`.
+Run the morning of. Two Circles wallets needed (the demo is
+**cross-wallet** by design: A publishes, B pays). The current contracts
+on Gnosis Chain (chain id 100):
 
-### 1. Verify the build is current
+- **ServiceRegistry**: `0x26F81d723Ad1648194FAA4b7E235105Fd1212c6c`
+- **KittyFactory v3**: `0xa6f38d8613F8612Fcfdf89707B479ea4ef554439`
 
-Open `https://thekitty.gnosis.box` in a private window. Dev tools →
-Sources → main bundle → search for `880E213224Ce5B6B8a01A21D4318819c67146533`
-(case-insensitive). It must appear. If it doesn't, Coolify served a stale
-bundle — force a rebuild with the right `VITE_KITTY_FACTORY` in **Build
+The front-end is at `https://thekitty.gnosis.box`.
+
+### 1. Verify the deployed build is current
+
+Open `https://thekitty.gnosis.box/services` in a private window. Dev
+tools → Sources → main bundle → grep for
+`26F81d723Ad1648194FAA4b7E235105Fd1212c6c`. It must appear. If it
+doesn't, Coolify served a stale bundle — push a fresh commit or
+trigger redeploy with `VITE_SERVICE_REGISTRY` set in **Build
 environment** (not Runtime).
 
-### 2. Seed the demo tontine
+### 2. Seed two services from wallet A
 
-Open the app inside the playground as the *creator* Safe:
-
-```
-https://circles.gnosis.io/playground?url=https%3A%2F%2Fthekitty.gnosis.box%2F
-```
-
-On the home, tap **Start a tontine** (primary orange CTA — the secondary
-"Or a group pot" link goes to the free-pot form, ignore it for the demo).
-
-Form values:
-- **Name**: `Demo Round`
-- **Symbol**: `DEMO`
-- **Members** (order = rotation order, index 0 claims round 0; use up/down
-  arrows to reorder):
-  1. Member A — `0x...`
-  2. Member B — `0x...`
-  3. Member C — `0x...`
-  4. Member D — `0x...`
-  5. Member E (will claim live on stage) — `0x...`
-- **Round length**: `1 minute` *for live testing*, or set to your real
-  demo cadence. The dropdown next to the number picks the unit
-  (seconds / minutes / hours / days).
-- **Per-member contribution**: `1` CRC (small, easy to reason about)
-- **First claim opens in**: `0` days — the client adds a 60-second buffer
-  automatically to dodge the firstClaimAt race against `block.timestamp`,
-  so round 0 will be claimable about a minute after creation.
-
-Tap **Start the tontine**, sign in the Safe sheet.
-
-### 3. Share the invite link to each member
-
-On the kitty detail page, tap the **share pill** in the header. It copies
-or shares a link of the form:
+Open the playground as the *provider* (wallet A):
 
 ```
-https://circles.gnosis.io/playground?url=https%3A%2F%2Fthekitty.gnosis.box%2Fkitty%2F<governance>%2Fjoin%3Fvia%3D<creator>
+https://circles.gnosis.io/playground?url=https%3A%2F%2Fthekitty.gnosis.box%2Fservices
 ```
 
-Each member opens it in their playground, lands on `/kitty/<gov>/join`,
-taps **Opt in · 1 signature**, signs `Hub.trust(group)` from their Safe.
-That's the only friction they hit.
+Tap **Publish a service** → fill the form:
 
-### 4. Pre-fund the pot
+- **Title**: `Haircut at my studio` (≤64 chars)
+- **Description**: `Marseille center, walk-ins welcome`
+- **Price · CRC**: `24`
+- **Duration · minutes**: `30`
 
-Each member deposits their `1 CRC` contribution. Pot balance after 5
-deposits: `5 CRC` = `roundContribution × memberCount` = round payout.
+Sign. Wait for the toast "Service published". Repeat for a second
+service so the list isn't a single row:
 
-Two safer routes if you don't want to coordinate 5 humans live:
-- **One operator route**: do members A-D's deposits from your own Safes
-  before the demo. Member E (you) is the only one whose deposit happens
-  live — or even pre-deposit E and just claim live.
-- **Pre-claim 0-2**: have rounds 0, 1, 2 already claimed before stage
-  time so the demo starts on round 3. Every claim drains the pot, so
-  **top up before each claim** to keep the pot at exactly
-  `roundContribution × memberCount`. If you can't top up between rounds,
-  do a fresh setup with `firstClaimDelay = 0` and demo round 0 directly.
+- **Title**: `Sound design lesson`
+- **Description**: `One-on-one, ableton + analog`
+- **Price · CRC**: `60`
+- **Duration · minutes**: `60`
 
-The cleanest single-slot demo setup: 5 members deposited once, demo
-shows round 0 with member A claiming live. Less narrative ("first
-round!") but zero moving parts.
+### 3. Verify the list
 
-### 5. Verify on a phone
+Refresh `/services`. Both services should appear, newest first. The
+provider chip on each card should show wallet A's avatar (or short
+address fallback).
 
-Open the playground link on your phone (and a backup phone if you have
-one). Verify:
+### 4. Sanity-check the management screen
 
-- App loads inside the iframe
-- Connected Safe badge top right
-- Home shows the seeded tontine with the **tontine** badge and
-  `5 members · 1 CRC / round` detail line
-- Tap into the kitty → TontineCard renders with round number,
-  countdown ticking, current claimer avatar
-- "your turn" badge appears when you're the current claimer
-- Claim CTA enables when the countdown hits 0
+Open the burger menu (top left) → **My services**. Both rows visible
+with **Edit** + **Deactivate** buttons. Tap **Edit** on one to confirm
+the form prefills with the current values, then back without saving.
 
-## Backup plans
+### 5. Switch to wallet B for the live pay
 
-- **Hub lag**: occasionally `pathfinder.aboutcircles.com` and the V2 Hub
-  return slowly. Keep a second tab open with the playground URL
-  pre-loaded. If the first stalls, switch.
-- **Wrong member signs**: contract reverts `NotYourTurn` (0x6c08c5a5). The
-  UI hides the claim CTA from non-claimers, so this only happens if you
-  switched Safes server-side and didn't reload. Reload + sign from the
-  right Safe.
-- **RoundNotReady** (0xa9ab86fa): countdown not finished yet. Wait a few
-  seconds, the timer ticks every second. If the chain's `block.timestamp`
-  is more than a minute behind the device clock, force a soft refresh.
-- **BadTontineParams** at create time (0x60c8fda8): the 60-second
-  firstClaimAt buffer should prevent this — but if it still hits, the
-  device clock is drifting more than 60 seconds behind real time. Fix the
-  device clock and retry.
-- **Empty pot at claim time** (Hub revert): the pot didn't have
-  `roundContribution × memberCount` available. Top up before clicking
-  claim. The contract rolls back rotation state on failed transfer, so
-  `currentRound` does NOT advance — the next try will be cleaner.
+In the playground host UI, swap the active wallet to B (a different
+Circles human who **does not yet trust** wallet A — the demo is more
+impressive if the bundle includes the trust call).
 
-## What NOT to demo
+Reload the iframe. The service cards now show:
+- *"Trust + pay 24 CRC"* CTA instead of *"Pay 24 CRC"*.
 
-- The free-pot mode (Or a group pot). Mention it exists as a secondary
-  mode if asked; don't show it. Too many txs for 90s, and it dilutes the
-  tontine pitch.
-- The history tab. It's noisy and pulls attention from the claim moment.
-- The deposit form. Pre-fund before stage time and stay on the claim
-  story.
-- Anything from the free-pot governance fields (quorum, small cap,
-  voting period). In a tontine kitty the UI already hides them — but if
-  the demo accidentally lands on a free pot they re-appear, which breaks
-  the narrative.
+That's the right pre-state.
 
-## After the demo
+### 6. Optional: pre-rate one of the services
 
-The contract holds your `currentRound` and `nextClaimAt` state — leave
-the kitty as-is to use as the live proof artifact during the Q&A. Have
-the gnosisscan link to the governance contract ready in case a judge
-asks "show me the code on-chain":
+If you have a third wallet handy, pay one of A's services from it and
+leave a 5★ rating so the detail page's rating distribution bar isn't
+empty during the demo. This step is purely cosmetic — if you skip it,
+just narrate "no ratings yet, the bar is empty until the first one
+lands" instead of pointing at it.
 
-- Factory: https://gnosisscan.io/address/0x880E213224Ce5B6B8a01A21D4318819c67146533
-- The demo kitty's governance address (note it after creation in
-  step 2): https://gnosisscan.io/address/0x...
+## Live demo flow (the 90 seconds)
+
+You are on wallet B's playground view of `/services`. Camera on the
+iframe. The cards above are visible.
+
+### Beat 1 — services board (0-10s)
+
+> *"Two humans, two services, priced in CRC."*
+
+Scroll once to show both cards. Hover the title of the first.
+
+### Beat 2 — detail page (10-25s)
+
+Tap the haircut card.
+
+> *"One URL per service. Shareable. You can see what others paid,
+> what they rated."*
+
+Point at: price + duration tile, provider chip, rating bar, payment
+count.
+
+### Beat 3 — provider profile (25-40s)
+
+Tap the provider chip.
+
+> *"Every provider has a profile — their full catalog, one link in
+> bio."*
+
+Show both A's services on the profile page. The lifetime CRC + rating
+average aggregate across all of their services.
+
+Back to the haircut detail page.
+
+### Beat 4 — pay flow (40-65s)
+
+Tap **Trust + pay 24 CRC**.
+
+> *"One signature: trust the provider, send the CRC, log the payment
+> on-chain."*
+
+Bottom sheet slides up. Show the source picker ("My Circles wallet"
+selected). Type into the memo: `Sat 14h`.
+
+> *"The memo travels with the payment so calendar services know the
+> slot."*
+
+Tap **Trust + pay 24 CRC**.
+
+### Beat 5 — host signature + rate prompt (65-80s)
+
+Host pops the Safe signature sheet. Confirm.
+
+> *"After every payment, you can rate. One slot per rater — re-rating
+> overwrites, no spam."*
+
+Wait for the receipt (~5s on Gnosis). The sheet swaps to "How was
+it?" with 5 stars. Tap the 5th.
+
+### Beat 6 — close (80-90s)
+
+The rate tx fires, toast "Thanks, 5★ saved", the sheet closes.
+
+Tap the burger → **Stats** to land on the Services board card showing
+the new payment + the bumped CRC paid total.
+
+> *"Two-sided economy between Circles humans. Done."*
+
+## If something breaks during the live take
+
+- **No host signature prompt** → the iframe lost focus, click into it
+  before tapping the CTA.
+- **"Insufficient balance"** toast → wallet B doesn't have 24 CRC
+  spendable. Mint more on the host's faucet route, or lower the
+  service price beforehand.
+- **The "Trust + pay" bundle hangs without a prompt** → host may have
+  swallowed the call; reload the iframe and retry. The on-chain state
+  isn't affected by a hung pre-sign.
+- **Rate sheet doesn't appear** → the payment still went through.
+  Reload `/services` to confirm the `timesPaid` counter bumped, then
+  cut to `/services/:id` to rate manually.
+
+## After the take
+
+- Run the same pay back the other way (wallet B → wallet A) so the
+  trust graph closes both directions and the next demo doesn't need
+  the trust bundle.
+- Don't deactivate the demo services — leaving them up means anyone
+  walking the URL after the judging window still sees something live.

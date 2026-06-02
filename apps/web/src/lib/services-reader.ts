@@ -10,6 +10,14 @@ const SERVICE_PAID_EVENT = parseAbiItem(
   'event ServicePaid(uint64 indexed id, address indexed provider, address indexed buyer, uint128 amount, string memo)',
 );
 
+const SERVICE_RATED_EVENT = parseAbiItem(
+  'event ServiceRated(uint64 indexed id, address indexed rater, uint8 stars, uint64 ratingsCount, uint128 ratingsSum)',
+);
+
+/// Bucketed star counts for a service, taking the latest rating per rater
+/// so re-rates don't double-count. `1..5` keys are the star levels.
+export type RatingBreakdown = Record<1 | 2 | 3 | 4 | 5, number>;
+
 /// A single ServicePaid event flattened for the UI. `blockNumber` lets the
 /// caller display "X mins ago" once they translate it to a timestamp.
 export interface RecentPayment {
@@ -19,6 +27,31 @@ export interface RecentPayment {
   memo: string;
   blockNumber: bigint;
   txHash: `0x${string}`;
+}
+
+/// Read every `ServicePaid` event where `payer` is the buyer and
+/// `provider` is the seller, returning the set of service ids the payer
+/// has paid for at least once. Used by the profile page to decide
+/// whether to expose the inline rate UI on each of the provider's cards
+/// — only paying customers can rate, Airbnb-style.
+export async function readPaidServiceIdsByPayer(
+  payer: Address,
+  provider: Address,
+): Promise<Set<string>> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return new Set();
+  const client = getPublicClient();
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    args: { provider, buyer: payer },
+    fromBlock: 'earliest',
+  });
+  const out = new Set<string>();
+  for (const l of logs) {
+    if (l.args.id != null) out.add(String(l.args.id));
+  }
+  return out;
 }
 
 /// Pull every payment the provider has received via `logPayment`, newest
@@ -276,6 +309,38 @@ export async function readServiceById(id: bigint): Promise<ServiceView | null> {
   } catch {
     return null;
   }
+}
+
+/// Read every `ServiceRated` event for one service and bucket the latest
+/// rating per rater into 5 star levels. Used by `/services/:id` to show a
+/// rating distribution bar instead of just the average — readers form
+/// stronger trust when they can see a 5★ x 12 spread vs a single 5★.
+export async function readRatingBreakdown(
+  serviceId: bigint,
+): Promise<RatingBreakdown> {
+  const empty: RatingBreakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return empty;
+  const client = getPublicClient();
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_RATED_EVENT,
+    args: { id: serviceId },
+    fromBlock: 'earliest',
+  });
+  // Latest rating wins per rater (overwrite semantics in the contract).
+  const latest = new Map<string, number>();
+  for (const l of logs) {
+    if (l.args.rater == null || l.args.stars == null) continue;
+    latest.set(String(l.args.rater).toLowerCase(), Number(l.args.stars));
+  }
+  const out: RatingBreakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const stars of latest.values()) {
+    if (stars >= 1 && stars <= 5) {
+      out[stars as 1 | 2 | 3 | 4 | 5] += 1;
+    }
+  }
+  return out;
 }
 
 /// Average star rating for a service. Returns null when no one has rated.
