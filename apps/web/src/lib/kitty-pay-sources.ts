@@ -13,11 +13,14 @@ import type { Address, KittyRef } from '@/types/kitty';
 export interface GroupPotPaySource {
   kitty: KittyRef;
   /// `true` if every on-chain precondition is satisfied — the source can
-/// be selected and the bundle will not revert.
+  /// be selected and the bundle will not revert.
   eligible: boolean;
   /// Why the source is disabled, when `eligible === false`. Surfaced
   /// gently in the UI so the user knows what's missing.
-  reason?: 'overThreshold' | 'providerNotTrusting';
+  reason?: 'overThreshold' | 'providerNotTrusting' | 'insufficientBalance';
+  /// The kitty's current holding of its own pot token (uint256(uint160(
+  /// kittyBaseGroup))). What the smallSpend tx can actually move.
+  balance: bigint;
 }
 
 /// Enumerate every group-pot source the `viewer` could use to pay
@@ -42,35 +45,59 @@ export async function readGroupPotPaySources(
   );
   if (candidates.length === 0) return [];
 
-  // One multicall to Hub V2 to learn whether the provider trusts each
-  // kitty's BaseGroup. The kitty bundle can't include a Hub.trust call
-  // from the buyer that would help — trust must come from the
-  // provider's wallet, by protocol.
+  // Two batched reads against Hub V2: (a) does the provider already
+  // trust each kitty's BaseGroup, and (b) what's each kitty's current
+  // pot-token holding. Both are necessary to surface an actionable
+  // source — without the balance we can't tell the user whether the
+  // smallSpend will revert on insufficient funds.
   const client = getPublicClient();
-  const results = await client.multicall({
-    contracts: candidates.map((k) => ({
-      abi: hubV2Abi,
-      address: CIRCLES_CONFIG.v2HubAddress,
-      functionName: 'isTrusted' as const,
-      args: [provider, k.groupAvatar] as const,
-    })),
-    allowFailure: true,
-  });
+  const [trustResults, balanceResults] = await Promise.all([
+    client.multicall({
+      contracts: candidates.map((k) => ({
+        abi: hubV2Abi,
+        address: CIRCLES_CONFIG.v2HubAddress,
+        functionName: 'isTrusted' as const,
+        args: [provider, k.groupAvatar] as const,
+      })),
+      allowFailure: true,
+    }),
+    client.multicall({
+      contracts: candidates.map((k) => ({
+        abi: hubV2Abi,
+        address: CIRCLES_CONFIG.v2HubAddress,
+        functionName: 'balanceOf' as const,
+        args: [k.governance, BigInt(k.groupAvatar)] as const,
+      })),
+      allowFailure: true,
+    }),
+  ]);
 
   const out: GroupPotPaySource[] = [];
   candidates.forEach((kitty, i) => {
+    const balRes = balanceResults[i];
+    const balance =
+      balRes && balRes.status === 'success' ? (balRes.result as bigint) : 0n;
     const threshold = safeBigInt(kitty.smallTxThreshold);
     const overThreshold = threshold === null ? false : priceCrc > threshold;
     if (overThreshold) {
-      out.push({ kitty, eligible: false, reason: 'overThreshold' });
+      out.push({ kitty, eligible: false, reason: 'overThreshold', balance });
       return;
     }
-    const r = results[i];
+    if (balance < priceCrc) {
+      out.push({
+        kitty,
+        eligible: false,
+        reason: 'insufficientBalance',
+        balance,
+      });
+      return;
+    }
+    const r = trustResults[i];
     const trusts = r && r.status === 'success' && r.result === true;
     out.push(
       trusts
-        ? { kitty, eligible: true }
-        : { kitty, eligible: false, reason: 'providerNotTrusting' },
+        ? { kitty, eligible: true, balance }
+        : { kitty, eligible: false, reason: 'providerNotTrusting', balance },
     );
   });
 

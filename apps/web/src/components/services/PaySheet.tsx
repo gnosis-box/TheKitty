@@ -15,6 +15,7 @@ import {
   readGroupPotPaySources,
   type GroupPotPaySource,
 } from '@/lib/kitty-pay-sources';
+import { readPersonalCrcBalance } from '@/lib/kitty-reader';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
 import type { Address } from '@/types/kitty';
@@ -53,6 +54,7 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const { address, isConnected, circlesSdk, sendTransactions } = useWallet();
   const [source, setSource] = useState<Source>({ type: 'wallet' });
   const [groupPotSources, setGroupPotSources] = useState<GroupPotPaySource[]>([]);
+  const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<Stage>('pay');
@@ -82,30 +84,40 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
     setSource({ type: 'wallet' });
   }, [open, service.id]);
 
-  // Fetch the viewer's eligible group-pot sources when the sheet opens.
-  // Cheap: localStorage read + one Hub multicall.
+  // Fetch the viewer's eligible group-pot sources + the wallet balance
+  // when the sheet opens. Cheap: 1 multicall for group pots, 1 single
+  // read for the personal CRC balance, in parallel.
   useEffect(() => {
     if (!open || !viewer) {
       setGroupPotSources([]);
+      setWalletBalance(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const list = await readGroupPotPaySources(
-          viewer,
-          service.provider,
-          service.priceCrc,
-        );
-        if (!cancelled) setGroupPotSources(list);
+        const [list, bal] = await Promise.all([
+          readGroupPotPaySources(viewer, service.provider, service.priceCrc),
+          readPersonalCrcBalance(viewer),
+        ]);
+        if (!cancelled) {
+          setGroupPotSources(list);
+          setWalletBalance(bal);
+        }
       } catch {
-        if (!cancelled) setGroupPotSources([]);
+        if (!cancelled) {
+          setGroupPotSources([]);
+          setWalletBalance(null);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [open, viewer, service.provider, service.priceCrc]);
+
+  const walletInsufficient =
+    walletBalance !== null && walletBalance < service.priceCrc;
 
   // Esc closes the sheet.
   useEffect(() => {
@@ -330,8 +342,15 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
             <SourceRow
               icon={<Wallet className="size-4" />}
               label="My Circles wallet"
-              hint={`Sending ${priceLabel} CRC from your wallet`}
+              hint={
+                walletBalance === null
+                  ? `Sending ${priceLabel} CRC from your wallet`
+                  : walletInsufficient
+                    ? `Balance ${formatCrc(walletBalance)} CRC — need ${priceLabel}`
+                    : `Available ${formatCrc(walletBalance)} CRC`
+              }
               selected={source.type === 'wallet'}
+              disabled={walletInsufficient}
               onSelect={() => setSource({ type: 'wallet' })}
             />
             {groupPotSources.map((src) => {
@@ -339,16 +358,18 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
               const isSelected =
                 source.type === 'groupPot' && source.governance === govKey;
               if (!src.eligible) {
+                const reason =
+                  src.reason === 'overThreshold'
+                    ? "Price over this pot's small-spend cap"
+                    : src.reason === 'insufficientBalance'
+                      ? `Pot has ${formatCrc(src.balance)} CRC — need ${priceLabel}`
+                      : "Provider doesn't trust this pot yet";
                 return (
                   <SourceRow
                     key={govKey}
                     icon={<ShieldCheck className="size-4" />}
                     label={src.kitty.name}
-                    hint={
-                      src.reason === 'overThreshold'
-                        ? 'Price over this pot\'s small-spend cap'
-                        : 'Provider doesn\'t trust this pot yet'
-                    }
+                    hint={reason}
                     disabled
                   />
                 );
@@ -358,7 +379,7 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
                   key={govKey}
                   icon={<ShieldCheck className="size-4" />}
                   label={src.kitty.name}
-                  hint="Pay from this group pot (smallSpend)"
+                  hint={`Pot balance ${formatCrc(src.balance)} CRC`}
                   selected={isSelected}
                   onSelect={() =>
                     setSource({
