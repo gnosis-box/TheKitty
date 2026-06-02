@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Store } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { AppFooter } from '@/components/AppFooter';
 import { Badge } from '@/components/ui/badge';
@@ -10,17 +12,53 @@ import { Logo } from '@/components/Logo';
 import { MainTabs } from '@/components/MainTabs';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
+import { ServiceCard } from '@/components/services/ServiceCard';
+import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
+import { readAllActiveServices, type ServiceView } from '@/lib/services-reader';
 import { useWallet } from '@/hooks/use-wallet';
 
-/// The services tab — the default surface of the app. Lists CRC-priced
-/// services published by people in the viewer's trust graph. Tapping a
-/// service opens the pay flow (W6 — to be wired). This file is the
-/// placeholder shell: header, tabs, empty state, publish CTA, footer.
-/// W4 fills the actual list of services.
+/// Services tab — default app surface. Loads the full registry of active
+/// services, surfaces them with rating + trust state, and routes to the
+/// pay flow when a card's CTA is tapped (W6 will wire the actual flow).
 export default function ServicesRoute() {
   const { address, isConnected, isMiniappHost } = useWallet();
   const registryReady = Boolean(CIRCLES_CONFIG.serviceRegistryAddress);
+
+  const [services, setServices] = useState<ServiceView[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!registryReady) {
+      setServices([]);
+      return;
+    }
+    let cancelled = false;
+    setServices(null);
+    setError(null);
+    (async () => {
+      try {
+        const list = await readAllActiveServices(address ?? undefined);
+        if (!cancelled) setServices(list);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load services');
+          setServices([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, registryReady]);
+
+  function onPay(service: ServiceView) {
+    // W6 wires the actual pay flow. For now we just acknowledge so the user
+    // gets feedback while we ship the rest of cycle 3.
+    toast.message('Pay flow coming next', {
+      description: `${service.title} — ${service.provider}`,
+    });
+  }
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
@@ -71,6 +109,14 @@ export default function ServicesRoute() {
         </Card>
       )}
 
+      {error && (
+        <Card className="border-rose-500/40 bg-rose-500/5">
+          <CardContent>
+            <p className="text-sm text-rose-700">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {!isConnected && (
         <Card>
           <CardContent>
@@ -85,7 +131,15 @@ export default function ServicesRoute() {
         </Card>
       )}
 
-      {isConnected && registryReady && (
+      {registryReady && services === null && (
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-[var(--radius-card)]" />
+          ))}
+        </div>
+      )}
+
+      {registryReady && services !== null && services.length === 0 && (
         <Card>
           <CardContent>
             <div className="flex items-start gap-3">
@@ -99,6 +153,19 @@ export default function ServicesRoute() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {services !== null && services.length > 0 && (
+        <section className="flex flex-col gap-3">
+          {services.map((s) => (
+            <ServiceCard
+              key={s.id.toString()}
+              service={s}
+              hasViewer={Boolean(address)}
+              onPay={onPay}
+            />
+          ))}
+        </section>
       )}
 
       <AppFooter />
