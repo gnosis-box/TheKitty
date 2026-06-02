@@ -64,16 +64,16 @@ export default function HomeRoute() {
     if (hasFree) {
       return {
         headerTitle: 'Your kitties',
-        headerSubtitle: 'Rotating tontines and group pots on Circles.',
+        headerSubtitle: 'Pool CRC, take turns spending it.',
         emptyCopy:
-          'No kitties yet. Start a rotating tontine, or a free-form group pot.',
+          'No kitties yet. Start a tontine or open a group pot with people you trust.',
       };
     }
     return {
       headerTitle: 'Your tontines',
-      headerSubtitle: 'Start a tontine. Chip in each round. Take your turn.',
+      headerSubtitle: 'Pool CRC, take turns spending it.',
       emptyCopy:
-        'No tontines yet. Gather 2+ Circles humans you trust, set a contribution and a round length, and the rotation runs itself — no organizer holds the pot.',
+        'No tontines yet. Pick 2+ Circles members, set a contribution, and one of you gets the pot each round.',
     };
   }, [kitties]);
 
