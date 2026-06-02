@@ -1,15 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Activity,
-  ArrowLeft,
   Coins,
   ExternalLink,
   RotateCw as RotateIcon,
   Trophy,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { BurgerButton } from '@/components/BurgerButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
@@ -17,7 +15,6 @@ import { readGlobalStats, type GlobalStats } from '@/lib/global-stats';
 import { formatCrc, shortAddress } from '@/lib/utils';
 
 export default function StatsRoute() {
-  const navigate = useNavigate();
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,16 +37,8 @@ export default function StatsRoute() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/')}
-          aria-label="Back"
-          className="px-2"
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
+      <header className="flex items-center gap-3">
+        <BurgerButton />
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
             The Kitty

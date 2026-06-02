@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="docs/brand/social-1280x640.png" alt="The Kitty — on-chain tontines for Circles" width="720" />
+  <img src="docs/brand/social-1280x640.png" alt="The Kitty — build a working economy with your circle" width="720" />
 </p>
 
 # The Kitty
 
-> **Programmable mutual aid for Circles communities.** A shared on-chain pot with rules in code, on Gnosis Chain.
+> **Build a working economy with people you trust.** Pool CRC in a tontine or group pot, then spend it on services your circle offers — on Circles.
 
 ## What it is
 
-**The Kitty is on-chain tontines for Circles communities. Members contribute CRC each round, the smart contract pays the whole pot to one member at a time, and the rotation runs itself — no organizer holds the money, no organizer can run off with it.**
+**The Kitty turns a Circles trust circle into a working local economy.** Two halves that feed each other: a **services board** where humans publish what they offer in CRC — a haircut, a lesson, a brunch — and **tontines + group pots** where a few people pool CRC and take turns spending it on each other. Every payout lands back inside the trust graph.
 
-It's the model behind tandas, sou-sou, hui, and tontines — used by hundreds of millions of people globally — rewritten as a Circles V2 mini-app: a real BaseGroup avatar plus a governance contract that enforces the rotation deterministically by member index.
+The pooling side is the model behind tandas, sou-sou, hui, and tontines — used by hundreds of millions of people globally — rewritten as a Circles V2 mini-app: a real BaseGroup avatar plus a governance contract that enforces the rotation deterministically by member index.
 
-A second mode (**free pot**) is available for groups that want a shared treasury with a small-spend cap + quorum vote instead of a rotation — useful for travel pools, neighbourhood solidarity funds, or collective bills. Same contract, same primitives, different payout rule.
+The two pool modes — **rotating tontine** (one member claims the pot each round) and **free pot** (shared treasury with a small-spend cap + quorum vote) — share the same contract, the same primitives, only the payout rule differs.
 
 ## How it works
 

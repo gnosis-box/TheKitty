@@ -1,6 +1,4 @@
-import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   ExternalLink,
   Github,
   HeartHandshake,
@@ -10,33 +8,23 @@ import {
   Wallet,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { BurgerButton } from '@/components/BurgerButton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { shortAddress } from '@/lib/utils';
 
 export default function AboutRoute() {
-  const navigate = useNavigate();
-
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
-      <header className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/')}
-          aria-label="Back"
-          className="px-2"
-        >
-          <ArrowLeft className="size-4" />
-        </Button>
+      <header className="flex items-center gap-3">
+        <BurgerButton />
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
             The Kitty
           </p>
           <h1 className="text-2xl font-semibold leading-tight">About</h1>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
-            On-chain tontines for Circles communities.
+            A working economy between people who trust each other.
           </p>
         </div>
       </header>

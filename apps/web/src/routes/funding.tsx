@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { RotateCw, Users } from 'lucide-react';
 
 import { AppFooter } from '@/components/AppFooter';
+import { BurgerButton } from '@/components/BurgerButton';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { InviteButton } from '@/components/InviteButton';
@@ -58,14 +59,14 @@ export default function FundingRoute() {
     if (hasFree) {
       return {
         headerTitle: 'Your kitties',
-        headerSubtitle: 'Pool CRC, take turns spending it.',
+        headerSubtitle: 'Pool CRC in a tontine or group pot.',
         emptyCopy:
           'No kitties yet. Start a tontine or open a group pot with people you trust.',
       };
     }
     return {
       headerTitle: 'Your tontines',
-      headerSubtitle: 'Pool CRC, take turns spending it.',
+      headerSubtitle: 'Pool CRC in a tontine or group pot.',
       emptyCopy:
         'No tontines yet. Pick 2+ Circles members, set a contribution, and one of you gets the pot each round.',
     };
@@ -75,6 +76,7 @@ export default function FundingRoute() {
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
       <header className="flex items-start justify-between">
         <div className="flex items-start gap-3">
+          <BurgerButton />
           <Logo size={42} className="mt-1" />
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">

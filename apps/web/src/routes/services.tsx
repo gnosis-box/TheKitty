@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Store } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { AppFooter } from '@/components/AppFooter';
+import { BurgerButton } from '@/components/BurgerButton';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { InviteButton } from '@/components/InviteButton';
@@ -12,6 +12,7 @@ import { Logo } from '@/components/Logo';
 import { MainTabs } from '@/components/MainTabs';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
+import { PaySheet } from '@/components/services/PaySheet';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
@@ -27,43 +28,45 @@ export default function ServicesRoute() {
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [payTarget, setPayTarget] = useState<ServiceView | null>(null);
 
-  useEffect(() => {
+  const fetchServices = useCallback(async () => {
     if (!registryReady) {
       setServices([]);
       return;
     }
+    try {
+      const list = await readAllActiveServices(address ?? undefined);
+      setServices(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load services');
+      setServices([]);
+    }
+  }, [address, registryReady]);
+
+  useEffect(() => {
     let cancelled = false;
     setServices(null);
     setError(null);
-    (async () => {
-      try {
-        const list = await readAllActiveServices(address ?? undefined);
-        if (!cancelled) setServices(list);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load services');
-          setServices([]);
-        }
+    void fetchServices().catch((err) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'Failed to load services');
       }
-    })();
+    });
     return () => {
       cancelled = true;
     };
-  }, [address, registryReady]);
+  }, [fetchServices]);
 
   function onPay(service: ServiceView) {
-    // W6 wires the actual pay flow. For now we just acknowledge so the user
-    // gets feedback while we ship the rest of cycle 3.
-    toast.message('Pay flow coming next', {
-      description: `${service.title} — ${service.provider}`,
-    });
+    setPayTarget(service);
   }
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 py-8">
       <header className="flex items-start justify-between">
         <div className="flex items-start gap-3">
+          <BurgerButton />
           <Logo size={42} className="mt-1" />
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
@@ -71,7 +74,7 @@ export default function ServicesRoute() {
             </p>
             <h1 className="text-2xl font-semibold leading-tight">Services</h1>
             <p className="mt-1 text-sm text-[var(--color-muted)]">
-              Spend your CRC with people you trust.
+              What your circle is offering.
             </p>
           </div>
         </div>
@@ -145,9 +148,9 @@ export default function ServicesRoute() {
             <div className="flex items-start gap-3">
               <Store className="mt-0.5 size-5 text-[var(--color-muted)]" />
               <div>
-                <p className="text-sm font-medium">No services yet.</p>
+                <p className="text-sm font-medium">Nothing on the board yet.</p>
                 <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  Be the first to publish — or invite a friend who offers something.
+                  Post what you offer in CRC, or invite someone who does.
                 </p>
               </div>
             </div>
@@ -169,6 +172,17 @@ export default function ServicesRoute() {
       )}
 
       <AppFooter />
+
+      {payTarget && (
+        <PaySheet
+          service={payTarget}
+          open={Boolean(payTarget)}
+          onClose={() => setPayTarget(null)}
+          onPaid={() => {
+            void fetchServices();
+          }}
+        />
+      )}
     </main>
   );
 }

@@ -138,6 +138,98 @@ export async function readAllActiveServices(viewer?: Address): Promise<ServiceVi
   return out;
 }
 
+/// Read every service published by `provider` (active + inactive) along
+/// with the same aggregates `readAllActiveServices` returns. Used by the
+/// "My services" management screen so the owner can edit or deactivate.
+export async function readMyServices(provider: Address): Promise<ServiceView[]> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return [];
+  const client = getPublicClient();
+  const base = { abi: serviceRegistryAbi, address: registry } as const;
+
+  const services = (await client.readContract({
+    ...base,
+    functionName: 'servicesByProvider',
+    args: [provider],
+  })) as RawService[];
+  if (services.length === 0) return [];
+
+  const ids = services.map((s) => s.id);
+  const [timesPaidRaw, totalPaidRaw, ratingsSumRaw, ratingsCountRaw] =
+    await Promise.all([
+      client.multicall({
+        contracts: ids.map((id) => ({ ...base, functionName: 'timesPaid' as const, args: [id] as const })),
+        allowFailure: false,
+      }),
+      client.multicall({
+        contracts: ids.map((id) => ({ ...base, functionName: 'totalPaid' as const, args: [id] as const })),
+        allowFailure: false,
+      }),
+      client.multicall({
+        contracts: ids.map((id) => ({ ...base, functionName: 'ratingsSum' as const, args: [id] as const })),
+        allowFailure: false,
+      }),
+      client.multicall({
+        contracts: ids.map((id) => ({ ...base, functionName: 'ratingsCount' as const, args: [id] as const })),
+        allowFailure: false,
+      }),
+    ]);
+
+  const out: ServiceView[] = services.map((s, i) => ({
+    id: s.id,
+    provider: s.provider,
+    title: s.title,
+    description: s.description,
+    priceCrc: s.priceCrc,
+    durationMins: s.durationMins,
+    active: s.active,
+    createdAt: Number(s.createdAt),
+    timesPaid: timesPaidRaw[i] as bigint,
+    totalPaid: totalPaidRaw[i] as bigint,
+    ratingsSum: ratingsSumRaw[i] as bigint,
+    ratingsCount: ratingsCountRaw[i] as bigint,
+  }));
+  out.sort((a, b) => b.createdAt - a.createdAt);
+  return out;
+}
+
+/// Read a single service by id (front-end fetch for the edit screen).
+export async function readServiceById(id: bigint): Promise<ServiceView | null> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return null;
+  const client = getPublicClient();
+  const base = { abi: serviceRegistryAbi, address: registry } as const;
+  try {
+    const s = (await client.readContract({
+      ...base,
+      functionName: 'getService',
+      args: [id],
+    })) as RawService;
+    const [timesPaid, totalPaid, ratingsSum, ratingsCount] = await Promise.all([
+      client.readContract({ ...base, functionName: 'timesPaid', args: [id] }) as Promise<bigint>,
+      client.readContract({ ...base, functionName: 'totalPaid', args: [id] }) as Promise<bigint>,
+      client.readContract({ ...base, functionName: 'ratingsSum', args: [id] }) as Promise<bigint>,
+      client.readContract({ ...base, functionName: 'ratingsCount', args: [id] }) as Promise<bigint>,
+    ]);
+    return {
+      id: s.id,
+      provider: s.provider,
+      title: s.title,
+      description: s.description,
+      priceCrc: s.priceCrc,
+      durationMins: s.durationMins,
+      active: s.active,
+      createdAt: Number(s.createdAt),
+      timesPaid,
+      totalPaid,
+      ratingsSum,
+      ratingsCount,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /// Average star rating for a service. Returns null when no one has rated.
 export function ratingAverage(s: Pick<ServiceView, 'ratingsSum' | 'ratingsCount'>): number | null {
   if (s.ratingsCount === 0n) return null;
