@@ -284,6 +284,7 @@ contract KittyGovernanceTest is Test {
     // ── smallSpend ──────────────────────────────────────────────────────────
 
     function test_smallSpend_transfersFromKitty() public {
+        hub.fakeDepositTo(address(kitty), alice, 3e18);
         vm.prank(alice);
         kitty.smallSpend(merchant, 3e18, "coffee");
 
@@ -295,6 +296,7 @@ contract KittyGovernanceTest is Test {
     }
 
     function test_smallSpend_atThresholdAllowed() public {
+        hub.fakeDepositTo(address(kitty), alice, SMALL_THRESHOLD);
         vm.prank(alice);
         kitty.smallSpend(merchant, SMALL_THRESHOLD, "edge");
         assertEq(hub.transferCount(), 1);
@@ -310,6 +312,13 @@ contract KittyGovernanceTest is Test {
         vm.prank(alice);
         vm.expectRevert(KittyGovernance.ZeroAddress.selector);
         kitty.smallSpend(address(0), 1e18, "");
+    }
+
+    function test_smallSpend_selfRecipientReverts() public {
+        // L-2: spending to the custodian itself would phantom-credit deposits.
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.BadRecipient.selector);
+        kitty.smallSpend(address(kitty), 1e18, "self");
     }
 
     function test_smallSpend_memoTooLongReverts() public {
@@ -406,6 +415,7 @@ contract KittyGovernanceTest is Test {
     }
 
     function test_approve_alreadyExecutedReverts() public {
+        hub.fakeDepositTo(address(kitty), alice, 600e18);
         vm.prank(alice);
         kitty.propose(merchant, 600e18, "rent");
         vm.prank(bob);
@@ -421,6 +431,7 @@ contract KittyGovernanceTest is Test {
     // ── execute ─────────────────────────────────────────────────────────────
 
     function test_execute_afterQuorumTransfersFromKitty() public {
+        hub.fakeDepositTo(address(kitty), alice, 600e18);
         vm.prank(alice);
         kitty.propose(merchant, 600e18, "rent");
 
@@ -450,6 +461,7 @@ contract KittyGovernanceTest is Test {
     }
 
     function test_execute_twiceReverts() public {
+        hub.fakeDepositTo(address(kitty), alice, 600e18);
         vm.prank(alice);
         kitty.propose(merchant, 600e18, "rent");
         vm.prank(bob);
@@ -536,9 +548,154 @@ contract KittyGovernanceTest is Test {
         }
         // At this point: approvals = needed.
         // If needed > 0 we expect execute to succeed.
+        hub.fakeDepositTo(address(k), ms[0], 1);
         vm.prank(ms[0]);
         k.execute(0);
         assertTrue(k.getProposal(0).executed);
+    }
+
+    // ── redemption (group-pot withdraw) ──────────────────────────────────────
+
+    function test_deposit_mintsSharesProportionally() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        assertEq(kitty.shares(alice), 100e18); // first deposit 1:1
+        assertEq(kitty.totalShares(), 100e18);
+        assertEq(kitty.potBalance(), 100e18);
+
+        hub.fakeDepositTo(address(kitty), bob, 50e18);
+        assertEq(kitty.shares(bob), 50e18); // proportional, no spend yet
+        assertEq(kitty.totalShares(), 150e18);
+        assertEq(kitty.potBalance(), 150e18);
+    }
+
+    function test_withdraw_returnsDeposit() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        vm.prank(alice);
+        uint128 got = kitty.withdraw(100e18);
+        assertEq(got, 100e18);
+        assertEq(kitty.shares(alice), 0);
+        assertEq(kitty.totalShares(), 0);
+        assertEq(kitty.potBalance(), 0);
+        (, address to,, uint256 amount) = hub.lastTransfer();
+        assertEq(to, alice);
+        assertEq(amount, 100e18);
+    }
+
+    function test_withdraw_partial() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        vm.prank(alice);
+        assertEq(kitty.withdraw(40e18), 40e18);
+        assertEq(kitty.shares(alice), 60e18);
+        assertEq(kitty.potBalance(), 60e18);
+    }
+
+    function test_withdraw_proportionalAfterCollectiveSpend() public {
+        // The fairness scenario: two equal deposits, one collective spend, each
+        // member walks away with their fair half of what remains.
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        hub.fakeDepositTo(address(kitty), bob, 100e18);
+
+        vm.prank(alice);
+        uint256 id = kitty.propose(merchant, 60e18, "rent");
+        vm.prank(bob);
+        kitty.approve(id);
+        vm.prank(alice);
+        kitty.execute(id);
+        assertEq(kitty.potBalance(), 140e18);
+
+        uint256 aliceShares = kitty.shares(alice);
+        vm.prank(alice);
+        assertEq(kitty.withdraw(aliceShares), 70e18);
+
+        uint256 bobShares = kitty.shares(bob);
+        vm.prank(bob);
+        assertEq(kitty.withdraw(bobShares), 70e18);
+        assertEq(kitty.potBalance(), 0);
+    }
+
+    function test_withdrawableOf_view() public {
+        assertEq(kitty.withdrawableOf(alice), 0);
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        hub.fakeDepositTo(address(kitty), bob, 100e18);
+        assertEq(kitty.withdrawableOf(alice), 100e18);
+
+        vm.prank(alice);
+        uint256 id = kitty.propose(merchant, 60e18, "rent");
+        vm.prank(bob);
+        kitty.approve(id);
+        vm.prank(alice);
+        kitty.execute(id);
+        assertEq(kitty.withdrawableOf(alice), 70e18);
+    }
+
+    function test_withdraw_reseedAfterFullExit() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        vm.prank(alice);
+        kitty.withdraw(100e18);
+        assertEq(kitty.totalShares(), 0);
+        assertEq(kitty.potBalance(), 0);
+        // Fresh deposit re-seeds the pool 1:1.
+        hub.fakeDepositTo(address(kitty), bob, 30e18);
+        assertEq(kitty.shares(bob), 30e18);
+        assertEq(kitty.potBalance(), 30e18);
+    }
+
+    function test_withdraw_reseedAfterSpendDrain() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        hub.fakeDepositTo(address(kitty), bob, 100e18);
+
+        // Group spends the ENTIRE pot collectively.
+        vm.prank(alice);
+        uint256 id = kitty.propose(merchant, 200e18, "blowout");
+        vm.prank(bob);
+        kitty.approve(id);
+        vm.prank(alice);
+        kitty.execute(id);
+
+        // Pool retired: balances zeroed, epoch bumped, stale shares dead.
+        assertEq(kitty.potBalance(), 0);
+        assertEq(kitty.totalShares(), 0);
+        assertEq(kitty.shareEpoch(), 1);
+        assertEq(kitty.withdrawableOf(alice), 0);
+
+        // Alice's stale shares can no longer be redeemed.
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.BadShareAmount.selector);
+        kitty.withdraw(100e18);
+
+        // A fresh deposit re-seeds 1:1, fully owned by the new depositor —
+        // dead shares grab nothing.
+        hub.fakeDepositTo(address(kitty), charlie, 50e18);
+        assertEq(kitty.totalShares(), 50e18);
+        assertEq(kitty.withdrawableOf(charlie), 50e18);
+        assertEq(kitty.withdrawableOf(alice), 0);
+
+        vm.prank(charlie);
+        assertEq(kitty.withdraw(50e18), 50e18);
+    }
+
+    function test_withdraw_revertsBadAmount() public {
+        hub.fakeDepositTo(address(kitty), alice, 100e18);
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.BadShareAmount.selector);
+        kitty.withdraw(0);
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.BadShareAmount.selector);
+        kitty.withdraw(100e18 + 1);
+    }
+
+    function test_withdraw_revertsInTontine() public {
+        KittyGovernance t = _newTontine(50e18);
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.NotGroupPot.selector);
+        t.withdraw(1);
+    }
+
+    function test_smallSpend_revertsWhenPotEmpty() public {
+        // Over-spend protection: an empty pot can't fund even a tiny spend.
+        vm.prank(alice);
+        vm.expectRevert(); // arithmetic underflow on potBalance
+        kitty.smallSpend(merchant, 1e18, "nope");
     }
 
     // ── tontine ─────────────────────────────────────────────────────────────
@@ -726,33 +883,45 @@ contract KittyGovernanceTest is Test {
         kitty.currentClaimer();
     }
 
-    function test_tontine_coexistsWithSmallSpend() public {
+    function test_tontine_smallSpendDisabled() public {
+        // H-3: free-form spending is reserved out of tontine mode so it can
+        // never starve the rotation. The pot belongs to the cycle.
         KittyGovernance t = _newTontine(50e18);
-        // Tontine and free-form spending share the same pot custodian. A
-        // small spend before round 0 opens should still work and just reduce
-        // the pot balance — the tontine state is untouched.
         hub.fakeDepositTo(address(t), alice, 200e18);
 
         vm.prank(alice);
+        vm.expectRevert(KittyGovernance.FreeSpendInTontine.selector);
         t.smallSpend(merchant, 5e18, "snack");
-        assertEq(hub.transferCount(), 1);
-        assertEq(t.currentRound(), 0);
-        assertEq(t.nextClaimAt(), block.timestamp + 30 days); // unchanged
     }
 
-    function test_tontine_coexistsWithPropose() public {
+    function test_tontine_proposeDisabled() public {
         KittyGovernance t = _newTontine(50e18);
         hub.fakeDepositTo(address(t), alice, 500e18);
 
         vm.prank(alice);
-        uint256 id = t.propose(merchant, 100e18, "off-rotation expense");
-        vm.prank(bob);
-        t.approve(id);
-        vm.prank(alice);
-        t.execute(id);
+        vm.expectRevert(KittyGovernance.FreeSpendInTontine.selector);
+        t.propose(merchant, 100e18, "off-rotation expense");
+    }
 
-        // Tontine timing unaffected by the off-cycle spend.
-        assertEq(t.currentRound(), 0);
+    function test_tontine_constructor_rejectsNonMultipleCycle() public {
+        // H-2: cycleRounds must be a whole multiple of the member count so
+        // every member gets an equal number of turns.
+        address[] memory members = new address[](3);
+        members[0] = alice;
+        members[1] = bob;
+        members[2] = charlie;
+        KittyGovernance.TontineConfig memory bad = KittyGovernance.TontineConfig({
+            enabled: true,
+            roundDuration: 30 days,
+            roundContribution: 50e18,
+            firstClaimAt: uint32(block.timestamp + 30 days),
+            cycleRounds: 4, // 4 % 3 != 0
+            stakeAmount: 0
+        });
+        vm.expectRevert(KittyGovernance.BadTontineParams.selector);
+        new KittyGovernance(
+            address(hub), group, members, QUORUM, SMALL_THRESHOLD, VOTING_PERIOD, bad
+        );
     }
 
     // ── stake mode + setup phase + slash ────────────────────────────────────
@@ -1019,6 +1188,57 @@ contract KittyGovernanceTest is Test {
         assertEq(hub.transferCount(), transfersBefore + 1);
     }
 
+    // ── forceComplete (liveness escape hatch) ───────────────────────────────
+
+    function test_forceComplete_recoversFromStall() public {
+        // bob's 30e18 stake can't cover the 100e18 penalty, so claimRound is
+        // permanently frozen under the old design (H-1).
+        KittyGovernance t = _activateStakeTontine(50e18, 30e18);
+        hub.fakeDepositTo(address(t), alice, 50e18);
+        hub.fakeDepositTo(address(t), charlie, 50e18);
+        vm.warp(t.nextClaimAt());
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.TontineBankrupt.selector);
+        t.claimRound();
+
+        // After a full extra roundDuration with no progress, any member can
+        // force the cycle complete.
+        vm.warp(uint256(t.nextClaimAt()) + t.roundDuration() + 1);
+        vm.prank(alice);
+        t.forceComplete();
+        assertEq(uint8(t.phase()), uint8(KittyGovernance.Phase.Complete));
+
+        // Honest members recover their stake instead of being frozen forever.
+        vm.prank(charlie);
+        t.withdrawStake();
+        assertEq(t.staked(charlie), 0);
+        (, address to,, uint256 amount) = hub.lastTransfer();
+        assertEq(to, charlie);
+        assertEq(amount, 30e18);
+    }
+
+    function test_forceComplete_revertsBeforeGrace() public {
+        KittyGovernance t = _activateStakeTontine(50e18, 200e18);
+        vm.warp(t.nextClaimAt()); // round open, but grace not yet elapsed
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.RoundNotReady.selector);
+        t.forceComplete();
+    }
+
+    function test_forceComplete_revertsWhenNotTontine() public {
+        vm.prank(alice);
+        vm.expectRevert(KittyGovernance.NotTontine.selector);
+        kitty.forceComplete();
+    }
+
+    function test_forceComplete_nonMemberReverts() public {
+        KittyGovernance t = _activateStakeTontine(50e18, 200e18);
+        vm.warp(uint256(t.nextClaimAt()) + t.roundDuration() + 1);
+        vm.prank(merchant);
+        vm.expectRevert(KittyGovernance.NotMember.selector);
+        t.forceComplete();
+    }
+
     // ── reentrancy ──────────────────────────────────────────────────────────
 
     /// @dev Cannot easily simulate a real Hub callback into the kitty (the mock
@@ -1032,6 +1252,7 @@ contract KittyGovernanceTest is Test {
         // via an internal re-entry helper.)
         // This test documents that we depend on ReentrancyGuard.
         r.arm(kitty);
+        hub.fakeDepositTo(address(kitty), alice, 1e18);
         vm.prank(alice);
         kitty.smallSpend(address(r), 1, "ok");
         // No assertion to make against the mock — purely a regression marker
