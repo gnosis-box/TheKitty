@@ -36,9 +36,7 @@ const DrawerContext = createContext<DrawerContextValue | null>(null);
 /// without each one re-mounting them.
 export function DrawerProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-
   const value = useMemo(() => ({ open, setOpen }), [open]);
-
   return (
     <DrawerContext.Provider value={value}>
       {children}
@@ -47,21 +45,45 @@ export function DrawerProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/// Hook for the burger button (or any other surface) to control the drawer.
 export function useDrawer(): DrawerContextValue {
   const ctx = useContext(DrawerContext);
   if (!ctx) throw new Error('useDrawer must be used inside <DrawerProvider>');
   return ctx;
 }
 
-/// The slide-in panel itself + its backdrop. Top-down sections: viewer
-/// header (avatar + Circles address), nav links (Services / Funding /
-/// Stats / About) with active-route highlight, and an internal footer
-/// that mirrors the discreet `<AppFooter>` links for redundancy.
+const NAV_LINKS: Array<{ to: string; label: string; icon: ReactNode }> = [
+  { to: '/services', label: 'Services', icon: <Store className="size-4" /> },
+  { to: '/services/mine', label: 'My services', icon: <Settings className="size-4" /> },
+  { to: '/funding', label: 'Funding', icon: <Wallet className="size-4" /> },
+  { to: '/stats', label: 'Stats', icon: <ChartBar className="size-4" /> },
+  { to: '/about', label: 'About', icon: <Info className="size-4" /> },
+];
+
+/// Among the nav entries, pick the deepest one whose `to` matches the
+/// current path. Without this, both `/services` and `/services/mine`
+/// would light up on `/services/mine` because the parent's `to` is a
+/// prefix of the child's path.
+function pickActiveTo(pathname: string): string | null {
+  let best: string | null = null;
+  for (const link of NAV_LINKS) {
+    const matches = pathname === link.to || pathname.startsWith(link.to + '/');
+    if (matches && (best === null || link.to.length > best.length)) {
+      best = link.to;
+    }
+  }
+  return best;
+}
+
+/// Slide-in panel + backdrop. Top-down: viewer header (avatar +
+/// short Circles address), nav links (longest-match wins on highlight),
+/// then an internal footer mirroring `<AppFooter>` so the menu is a
+/// complete shortcut bar.
 function AppDrawer() {
   const { open, setOpen } = useDrawer();
   const { address, isConnected } = useWallet();
   const close = useCallback(() => setOpen(false), [setOpen]);
+  const { pathname } = useLocation();
+  const activeTo = pickActiveTo(pathname);
 
   // Lock body scroll while the drawer is open + close on Esc.
   useEffect(() => {
@@ -138,11 +160,16 @@ function AppDrawer() {
         </section>
 
         <nav className="mt-5 flex-1 px-3">
-          <DrawerLink to="/services" icon={<Store className="size-4" />} label="Services" onSelect={close} />
-          <DrawerLink to="/services/mine" icon={<Settings className="size-4" />} label="My services" onSelect={close} />
-          <DrawerLink to="/funding" icon={<Wallet className="size-4" />} label="Funding" onSelect={close} />
-          <DrawerLink to="/stats" icon={<ChartBar className="size-4" />} label="Stats" onSelect={close} />
-          <DrawerLink to="/about" icon={<Info className="size-4" />} label="About" onSelect={close} />
+          {NAV_LINKS.map((link) => (
+            <DrawerLink
+              key={link.to}
+              to={link.to}
+              icon={link.icon}
+              label={link.label}
+              active={activeTo === link.to}
+              onSelect={close}
+            />
+          ))}
         </nav>
 
         <footer className="border-t border-[var(--color-border)] px-5 py-4 text-xs text-[var(--color-muted)]">
@@ -165,13 +192,11 @@ interface DrawerLinkProps {
   to: string;
   icon: ReactNode;
   label: string;
+  active: boolean;
   onSelect(): void;
 }
 
-function DrawerLink({ to, icon, label, onSelect }: DrawerLinkProps) {
-  const { pathname } = useLocation();
-  const active =
-    pathname === to || (to !== '/' && pathname.startsWith(to + '/'));
+function DrawerLink({ to, icon, label, active, onSelect }: DrawerLinkProps) {
   return (
     <Link
       to={to}

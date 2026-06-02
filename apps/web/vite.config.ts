@@ -10,6 +10,29 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Split heavy vendor surfaces out of the app chunk so a cold load
+    // streams them in parallel: viem, the @aboutcircles family, and
+    // React each end up in their own file. Cuts initial JS roughly in
+    // half on the services landing.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/@aboutcircles')) return 'circles';
+          if (id.includes('node_modules/viem')) return 'viem';
+          if (
+            id.includes('node_modules/react-dom') ||
+            id.includes('node_modules/react-router') ||
+            /[\\/]node_modules[\\/]react[\\/]/.test(id) ||
+            id.includes('node_modules/scheduler')
+          ) {
+            return 'react';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   server: {
     host: true,
     port: 5173,

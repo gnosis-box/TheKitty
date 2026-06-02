@@ -16,12 +16,21 @@ The two pool modes — **rotating tontine** (one member claims the pot each roun
 
 ## How it works
 
-1. **Create a kitty** with 2+ Circles members. Pick *rotating tontine* (set round length + per-member contribution) or *free pot* (set quorum + small-spend cap).
-2. **Deposit CRC**: each member commits their share; deposits are tracked on-chain per address.
-3. **Pay out**:
+### Services board
+
+1. **Publish what you offer in CRC** — a haircut, a guitar lesson, a brunch. One signature, one row in the `ServiceRegistry`. You can edit price/description or deactivate at any time from `/services/mine`.
+2. **Browse and pay** — anyone can see every active listing, with provider avatar, 1–5 star rating, and trust-graph status. Tapping *Pay* bundles **trust + Hub.safeTransferFrom + logPayment** in a single host signature, so one tap is one Safe-batch on-chain.
+3. **Rate** — after a payment, the buyer can rate 1–5. Per-rater overwrite semantics, no anonymous spam.
+
+### Funding (kitties)
+
+1. **Start a kitty** with 2+ Circles members. Pick *rotating tontine* (round length + per-member contribution) or *free pot* (quorum + small-spend cap).
+2. **Deposit CRC** — each member commits their share; deposits are tracked on-chain per address.
+3. **Pay out** —
    - *Tontine*: when a round opens, the current member calls `claimRound` and receives the full pot. Rotation advances by one.
    - *Free pot*: under the cap → any member pays direct, no vote. Over the cap → propose → approve → execute once quorum is met.
-4. **Aligned with Circles demurrage**: idle CRC loses ~7%/yr by design — a kitty keeps the money moving, which is precisely how a Freigeld-style currency is meant to behave.
+
+Both halves feed each other: a kitty payout lands back in the trust circle, and the spending happens on a service the same circle offers.
 
 ## Why on-chain
 
@@ -37,18 +46,24 @@ User wallet (Circles human)
    │
    │ via @aboutcircles/miniapp-sdk → sendTransactions([...])
    ▼
-KittyFactory  ──── createKitty() ─────► BaseGroupFactory → new BaseGroup (Circles V2 group avatar)
-                                                            │
-                                                            └─── trusts members
-                                                            └─── owner transferred to creator
-                                  ┌───────────────────────────┘
-                                  ▼
+   ├──► ServiceRegistry            (services board — singleton)
+   │       publish / update / deactivate
+   │       Hub.safeTransferFrom + logPayment   ← pay flow (1 signature)
+   │       rate (1–5 stars, overwrite per rater)
+   │
+   └──► KittyFactory ── createKitty() ──► BaseGroupFactory → new BaseGroup
+                                              │
+                                              └─ trusts members + owner → creator
+                                ┌────────────────┘
+                                ▼
                           KittyGovernance
                               (custodian + governance + tontine rotation)
 ```
 
+- `ServiceRegistry.sol` — singleton catalog: services priced in CRC, with `logPayment` aggregates (payments + total CRC paid) and per-rater 1–5 star ratings. Holds no funds — the actual CRC transfer goes through `Hub.safeTransferFrom`.
 - `KittyGovernance.sol` — pool custodian. Runs free-pot governance (`propose / approve / execute / smallSpend`) and, when `tontineMode` is enabled, the rotating `claimRound` payout. The two modes co-exist on the same contract.
 - `KittyFactory.sol` — one-tx setup: creates the BaseGroup, trusts members, deploys governance with the chosen mode + parameters, hands BaseGroup ownership back to the creator.
+- `MiniappRunner` (front-end, in-tree, slated for upstream PR) — implements `@aboutcircles/sdk-runner`'s `ContractRunner` against the Circles miniapp iframe host, so the rest of the front uses typed SDK wrappers (`core.hubV2.*`) instead of hand-rolled calldata.
 
 ## Deployed (Gnosis Chain, chainId 100)
 
@@ -69,7 +84,7 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 
 - **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
 - **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
-- **Contracts** — Foundry, Solidity 0.8.24, 77 tests passing. The free-pot core passed a Trail of Bits review; the tontine + stake extensions are post-audit and live on top.
+- **Contracts** — Foundry, Solidity 0.8.24, 105 tests passing. The free-pot core passed a Trail of Bits review; the tontine + stake extensions and the ServiceRegistry are post-audit and live on top.
 - **Hosting** — Coolify (Docker + Caddy)
 
 ## License
