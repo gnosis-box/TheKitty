@@ -102,6 +102,8 @@ export default function FundingRoute() {
 
       <InviterBanner selfAddress={address} />
 
+      <PublicStats />
+
       <div className="flex flex-col gap-2">
         <Link
           to="/kitty/new?mode=tontine"
@@ -116,8 +118,6 @@ export default function FundingRoute() {
           <Users className="size-3.5" /> Or a group pot
         </Link>
       </div>
-
-      <PublicStats />
 
       {!isConnected && (
         <Card>

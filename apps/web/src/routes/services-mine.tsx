@@ -6,11 +6,17 @@ import { toast } from 'sonner';
 import { BurgerButton } from '@/components/BurgerButton';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
-import { readMyServices, type ServiceView } from '@/lib/services-reader';
+import {
+  readMyServices,
+  readRecentPaymentsForProvider,
+  type RecentPayment,
+  type ServiceView,
+} from '@/lib/services-reader';
 import { buildDeactivateServiceTx } from '@/lib/tx-builders';
 import { formatCrc } from '@/lib/utils';
 import type { Address } from '@/types/kitty';
@@ -25,22 +31,29 @@ export default function ServicesMineRoute() {
   const registryReady = Boolean(CIRCLES_CONFIG.serviceRegistryAddress);
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
+  const [latestByService, setLatestByService] = useState<Record<string, RecentPayment>>({});
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<bigint | null>(null);
 
   async function load(viewer: Address) {
     try {
-      const list = await readMyServices(viewer);
+      const [list, payments] = await Promise.all([
+        readMyServices(viewer),
+        readRecentPaymentsForProvider(viewer),
+      ]);
       setServices(list);
+      setLatestByService(indexLatestByService(payments));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load your services');
       setServices([]);
+      setLatestByService({});
     }
   }
 
   useEffect(() => {
     if (!address) {
       setServices([]);
+      setLatestByService({});
       return;
     }
     let cancelled = false;
@@ -48,12 +61,19 @@ export default function ServicesMineRoute() {
     setError(null);
     (async () => {
       try {
-        const list = await readMyServices(address as Address);
-        if (!cancelled) setServices(list);
+        const [list, payments] = await Promise.all([
+          readMyServices(address as Address),
+          readRecentPaymentsForProvider(address as Address),
+        ]);
+        if (!cancelled) {
+          setServices(list);
+          setLatestByService(indexLatestByService(payments));
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load your services');
           setServices([]);
+          setLatestByService({});
         }
       }
     })();
@@ -185,6 +205,23 @@ export default function ServicesMineRoute() {
                   </p>
                 </div>
 
+                {(() => {
+                  const last = latestByService[s.id.toString()];
+                  if (!last) return null;
+                  return (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-[var(--color-surface-hi)] px-2 py-1.5 text-[11px]">
+                      <span className="text-[var(--color-muted)]">Last:</span>
+                      <MemberAvatar address={last.buyer} size="xs" />
+                      <span className="font-mono">{formatCrc(last.amount)} CRC</span>
+                      {last.memo && (
+                        <span className="ml-1 line-clamp-1 italic text-[var(--color-muted)]">
+                          "{last.memo}"
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
@@ -212,4 +249,16 @@ export default function ServicesMineRoute() {
       )}
     </main>
   );
+}
+
+/// Pick the freshest payment per service (the reader returns them sorted
+/// newest-first across all services). Returned map keys are stringified
+/// service ids so the caller can `latestByService[s.id.toString()]`.
+function indexLatestByService(payments: RecentPayment[]): Record<string, RecentPayment> {
+  const out: Record<string, RecentPayment> = {};
+  for (const p of payments) {
+    const k = p.serviceId.toString();
+    if (!out[k]) out[k] = p;
+  }
+  return out;
 }

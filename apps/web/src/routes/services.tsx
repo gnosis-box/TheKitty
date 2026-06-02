@@ -22,8 +22,6 @@ import {
   readAllActiveServices,
   type ServiceView,
 } from '@/lib/services-reader';
-import { readServiceStats, type ServiceStats } from '@/lib/global-stats';
-import { formatCrc } from '@/lib/utils';
 import { useWallet } from '@/hooks/use-wallet';
 
 /// Sort options exposed by the search bar. Keep the list short — every
@@ -46,7 +44,6 @@ export default function ServicesRoute() {
   const registryReady = Boolean(CIRCLES_CONFIG.serviceRegistryAddress);
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
-  const [stats, setStats] = useState<ServiceStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<ServiceView | null>(null);
   const [query, setQuery] = useState('');
@@ -55,20 +52,14 @@ export default function ServicesRoute() {
   const fetchServices = useCallback(async () => {
     if (!registryReady) {
       setServices([]);
-      setStats(null);
       return;
     }
     try {
-      const [list, agg] = await Promise.all([
-        readAllActiveServices(address ?? undefined),
-        readServiceStats(),
-      ]);
+      const list = await readAllActiveServices(address ?? undefined);
       setServices(list);
-      setStats(agg);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
       setServices([]);
-      setStats(null);
     }
   }, [address, registryReady]);
 
@@ -154,14 +145,6 @@ export default function ServicesRoute() {
       <MainTabs />
 
       <InviterBanner selfAddress={address} />
-
-      {stats && stats.servicesPublished > 0 && (
-        <div className="grid grid-cols-3 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3 text-center">
-          <HeroStat label="Active" value={stats.activeServices.toString()} />
-          <HeroStat label="Providers" value={stats.activeProviders.toString()} />
-          <HeroStat label="CRC paid" value={formatCrc(stats.totalCrcPaid)} />
-        </div>
-      )}
 
       <Link
         to="/services/new"
@@ -296,13 +279,3 @@ export default function ServicesRoute() {
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-base leading-tight">{value}</span>
-      <span className="text-[10px] uppercase tracking-wider text-[var(--color-muted)]">
-        {label}
-      </span>
-    </div>
-  );
-}

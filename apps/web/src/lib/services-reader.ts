@@ -1,8 +1,56 @@
+import { parseAbiItem } from 'viem';
+
 import { CIRCLES_CONFIG } from './circles-config';
 import { hubV2Abi } from './abi/hub-v2';
 import { serviceRegistryAbi } from './abi/service-registry';
 import { getPublicClient } from './public-client';
 import type { Address } from '@/types/kitty';
+
+const SERVICE_PAID_EVENT = parseAbiItem(
+  'event ServicePaid(uint64 indexed id, address indexed provider, address indexed buyer, uint128 amount, string memo)',
+);
+
+/// A single ServicePaid event flattened for the UI. `blockNumber` lets the
+/// caller display "X mins ago" once they translate it to a timestamp.
+export interface RecentPayment {
+  serviceId: bigint;
+  buyer: Address;
+  amount: bigint;
+  memo: string;
+  blockNumber: bigint;
+  txHash: `0x${string}`;
+}
+
+/// Pull every payment the provider has received via `logPayment`, newest
+/// first. Used by `/services/mine` to show a "Last:" line under each
+/// service. One eth_getLogs call thanks to the `provider` indexed filter.
+export async function readRecentPaymentsForProvider(
+  provider: Address,
+): Promise<RecentPayment[]> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return [];
+  const client = getPublicClient();
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    args: { provider },
+    fromBlock: 'earliest',
+  });
+  const out: RecentPayment[] = [];
+  for (const l of logs) {
+    if (l.args.id == null || l.args.amount == null || l.args.buyer == null) continue;
+    out.push({
+      serviceId: l.args.id as bigint,
+      buyer: l.args.buyer as Address,
+      amount: l.args.amount as bigint,
+      memo: (l.args.memo as string) ?? '',
+      blockNumber: l.blockNumber!,
+      txHash: l.transactionHash!,
+    });
+  }
+  out.sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : -1));
+  return out;
+}
 
 /// A service as the front-end consumes it. Mirrors the on-chain Service
 /// struct plus the per-service aggregates (ratings + payment count + total

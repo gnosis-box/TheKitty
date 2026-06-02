@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Check, ShieldCheck, Wallet, X } from 'lucide-react';
+import { Check, ShieldCheck, Star, Wallet, X } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/hooks/use-wallet';
-import { buildLogPaymentTx } from '@/lib/tx-builders';
+import { buildLogPaymentTx, buildRateServiceTx } from '@/lib/tx-builders';
 import { TRUST_EXPIRY_NEVER } from '@/lib/tx-builders';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
@@ -15,6 +15,8 @@ import type { Address } from '@/types/kitty';
 /// bound to 256 chars by the contract. Mirror that as a hard cap in the UI
 /// so we never produce a tx the contract will revert on.
 const MAX_MEMO_LEN = 256;
+
+type Stage = 'pay' | 'rate';
 
 interface Props {
   service: ServiceView;
@@ -36,6 +38,9 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const [source] = useState<PaySource>('wallet');
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [stage, setStage] = useState<Stage>('pay');
+  const [ratingHover, setRatingHover] = useState(0);
+  const [rating, setRating] = useState(0);
 
   const viewer = address as Address | null;
   const trusted = service.trustedByViewer === true;
@@ -50,6 +55,14 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
       document.body.style.overflow = previous;
     };
   }, [open]);
+
+  // Reset transient state every time the sheet opens fresh.
+  useEffect(() => {
+    if (!open) return;
+    setStage('pay');
+    setRating(0);
+    setRatingHover(0);
+  }, [open, service.id]);
 
   // Esc closes the sheet.
   useEffect(() => {
@@ -120,11 +133,35 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
 
       toast.success('Payment sent', { id: 'pay-service' });
       onPaid();
-      onClose();
+      // Transition to the rate step instead of closing. The user can
+      // skip with the X / backdrop and still keep the payment.
+      setStage('rate');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Payment failed', {
         id: 'pay-service',
       });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitRating(stars: number) {
+    if (!viewer) return;
+    setSubmitting(true);
+    setRating(stars);
+    try {
+      toast.loading('Saving rating…', { id: 'rate-service' });
+      const tx = buildRateServiceTx({ serviceId: service.id, stars });
+      const [hash] = await sendTransactions([tx]);
+      if (!hash) throw new Error('Host returned no tx hash');
+      toast.success(`Thanks — ${stars}★ saved`, { id: 'rate-service' });
+      onPaid();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to rate', {
+        id: 'rate-service',
+      });
+      setRating(0);
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +184,7 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
         <header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-              Pay a service
+              {stage === 'rate' ? 'How was it?' : 'Pay a service'}
             </p>
             <h2 className="mt-0.5 truncate text-lg font-semibold leading-tight">
               {service.title}
@@ -163,6 +200,54 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
           </button>
         </header>
 
+        {stage === 'rate' ? (
+          <section className="mt-6 flex flex-col items-center gap-4">
+            <p className="text-sm text-[var(--color-muted)]">
+              Rate this service so others know it's good.
+            </p>
+            <div
+              role="radiogroup"
+              aria-label="Rating"
+              className="flex items-center gap-2"
+              onMouseLeave={() => setRatingHover(0)}
+            >
+              {[1, 2, 3, 4, 5].map((n) => {
+                const active = n <= (ratingHover || rating);
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={rating === n}
+                    aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                    disabled={submitting}
+                    onMouseEnter={() => setRatingHover(n)}
+                    onFocus={() => setRatingHover(n)}
+                    onClick={() => submitRating(n)}
+                    className="rounded-full p-1 transition-transform hover:scale-110 disabled:opacity-50"
+                  >
+                    <Star
+                      className={
+                        active
+                          ? 'size-9 fill-current text-amber-500'
+                          : 'size-9 text-[var(--color-muted)]'
+                      }
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="mt-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-text)]"
+            >
+              Skip for now
+            </button>
+          </section>
+        ) : (
+        <>
         <div className="mt-4 flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] p-3">
           <div className="flex items-center gap-2">
             <MemberAvatar address={service.provider} size="sm" />
@@ -239,6 +324,8 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
           <p className="mt-3 text-center text-xs text-[var(--color-muted)]">
             Open inside the Circles playground to sign with your Circles wallet.
           </p>
+        )}
+        </>
         )}
       </div>
     </div>
