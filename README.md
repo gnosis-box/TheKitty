@@ -19,7 +19,7 @@ The two pool modes — **rotating tontine** (one member claims the pot each roun
 ### Services board
 
 1. **Publish what you offer in CRC** — a haircut, a guitar lesson, a brunch. One signature, one row in the `ServiceRegistry`. You can edit price/description or deactivate at any time from `/services/mine`.
-2. **Browse and pay** — anyone can see every active listing, with provider avatar, 1–5 star rating, and trust-graph status. Tapping *Pay* bundles **trust + Hub.safeTransferFrom + logPayment** in a single host signature, so one tap is one Safe-batch on-chain.
+2. **Browse and pay** — anyone can see every active listing, with provider avatar, 1–5 star rating, and trust-graph status. Tapping *Pay* bundles **trust + Hub.safeTransferFrom + logPayment** in a single host signature, so one tap is one atomic bundle on-chain.
 3. **Rate** — after a payment, the buyer can rate 1–5. Per-rater overwrite semantics, no anonymous spam.
 
 ### Funding (kitties)
@@ -82,7 +82,7 @@ https://circles.gnosis.io/playground?url=<your-deploy-url>
 
 ## Stack
 
-- **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.50
+- **Frontend** — Vite 6, React 19, Tailwind v4, react-router 7, viem 2.21
 - **Wallet** — `@aboutcircles/miniapp-sdk` (host iframe) + Circles profile service for member names & avatars
 - **Circles SDK posture** — every Hub V2 / wrappers / avatar op goes through `@aboutcircles/sdk-core`'s typed wrappers via our in-tree `MiniappRunner` (upstream PR ready, see Architecture). Our own contracts (`KittyGovernance`, `ServiceRegistry`) are the only places `tx-builders.ts` still encodes via viem.
 - **Contracts** — Foundry, Solidity 0.8.24, 105 tests passing. The free-pot core passed a Trail of Bits review; the tontine + stake extensions and the ServiceRegistry are post-audit and live on top. ServiceRegistry is Sourcify Exact Match verified.

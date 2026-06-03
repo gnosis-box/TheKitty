@@ -5,7 +5,7 @@ import { useWallet } from '@/hooks/use-wallet';
 /// When the app is opened standalone (outside the Circles host iframe), the
 /// wallet is never injected and the user can't actually do anything. This
 /// button surfaces the right move: re-open the same URL inside the official
-/// Circles playground host so the Safe is connected.
+/// Circles playground host so the Circles wallet is connected.
 ///
 /// Returns null when already running inside the miniapp host (the button has
 /// nothing to do in that case).

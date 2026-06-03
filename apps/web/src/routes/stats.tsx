@@ -134,7 +134,7 @@ export default function StatsRoute() {
             </div>
           ) : !stats || stats.kittiesCreated === 0 ? (
             <p className="text-sm text-[var(--color-muted)]">
-              Nothing yet. Be the first to start a tontine on this factory.
+              No kitties yet — start a tontine or open a group pot.
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-3 text-sm">

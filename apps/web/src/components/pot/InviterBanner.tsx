@@ -9,9 +9,9 @@ import type { Address } from '@/types/kitty';
 
 /// Banner shown when the user landed via a `?via=<inviter>` link. It also
 /// surfaces the easiest path back: a "Send my address" button that opens
-/// the native share sheet (or copies to clipboard) with the user's own Safe
-/// address pre-typed, so they can paste it back to the inviter in Telegram /
-/// SMS / Discord. Dismissible per session.
+/// the native share sheet (or copies to clipboard) with the user's own
+/// Circles address pre-typed, so they can paste it back to the inviter in
+/// Telegram / SMS / Discord. Dismissible per session.
 export function InviterBanner({ selfAddress }: { selfAddress?: Address | null }) {
   const [inviter, setInviter] = useState<Address | null>(null);
 
