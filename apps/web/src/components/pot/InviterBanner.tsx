@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Send, X } from 'lucide-react';
+import { Send, Sparkles, X } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { clearInviter, getInviter } from '@/lib/inviter';
@@ -80,6 +80,11 @@ export function InviterBanner({ selfAddress }: { selfAddress?: Address | null })
           Send my address back ({shortAddress(selfAddress)})
         </button>
       )}
+      <p className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
+        <Sparkles className="size-3.5 shrink-0 text-amber-500" />
+        Your first publish or pay drops a referral reward (5 CRC each) into
+        the next weekly draw — for both you and your inviter.
+      </p>
     </div>
   );
 }

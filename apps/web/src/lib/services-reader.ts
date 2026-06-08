@@ -119,6 +119,81 @@ export async function readTopProvidersByActivity(
   return out.slice(0, limit);
 }
 
+/// Provider streak summary — consecutive ISO weeks (Monday→Sunday UTC)
+/// ending in the current week during which `provider` received at least
+/// one ServicePaid event. Reset to 0 if the current week has no payment
+/// yet AND the previous week was already broken. The streak is the
+/// strongest "show up" signal we have, so it gets prime real estate on
+/// the provider profile in republish 3.
+export interface ProviderStreak {
+  /// Consecutive ISO weeks (incl. current if it counts) with ≥1 payment.
+  weeks: number;
+  /// True if the current week already has a payment. Used by the UI
+  /// to distinguish "streak alive, you've got time" vs "streak about to
+  /// break unless you receive a payment".
+  currentWeekCounted: boolean;
+}
+
+export async function readProviderWeeklyStreak(
+  provider: Address,
+): Promise<ProviderStreak> {
+  const empty: ProviderStreak = { weeks: 0, currentWeekCounted: false };
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return empty;
+  const client = getPublicClient();
+
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    args: { provider },
+    fromBlock: 'earliest',
+  });
+  if (logs.length === 0) return empty;
+
+  // Translate each event's blockNumber to an approximate unix timestamp
+  // via the current block + Gnosis ~5s block time. Cheap and accurate
+  // enough for week-bucket grouping (a few minutes of skew never moves
+  // an event across an ISO-week boundary in practice).
+  const currentBlock = await client.getBlock({ blockTag: 'latest' });
+  const currentTs = Number(currentBlock.timestamp);
+  const currentBn = Number(currentBlock.number);
+  const GNOSIS_BLOCK_SECONDS = 5;
+
+  const weekStarts = new Set<number>();
+  for (const l of logs) {
+    if (!l.blockNumber) continue;
+    const bn = Number(l.blockNumber);
+    const ts = currentTs - (currentBn - bn) * GNOSIS_BLOCK_SECONDS;
+    weekStarts.add(isoWeekStartUtc(ts * 1000));
+  }
+
+  const currentWeekStart = isoWeekStartUtc(Date.now());
+  const oneWeekMs = 7 * 24 * 3600 * 1000;
+
+  const currentWeekCounted = weekStarts.has(currentWeekStart);
+  let cursor = currentWeekCounted
+    ? currentWeekStart
+    : currentWeekStart - oneWeekMs;
+  let streak = 0;
+  while (weekStarts.has(cursor)) {
+    streak += 1;
+    cursor -= oneWeekMs;
+  }
+  return { weeks: streak, currentWeekCounted };
+}
+
+/// Return the unix-ms timestamp at which the ISO week containing
+/// `epochMs` starts (Monday 00:00 UTC).
+function isoWeekStartUtc(epochMs: number): number {
+  const d = new Date(epochMs);
+  d.setUTCHours(0, 0, 0, 0);
+  // 0 = Sun, 1 = Mon, …, 6 = Sat. We want Monday as week start.
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.getTime();
+}
+
 /// Network-wide stream of recent `ServicePaid` events, newest first.
 /// Powers the "Recently paid in your network" feed on `/services` — the
 /// daily-fresh content that gives users a reason to keep opening the
@@ -436,6 +511,47 @@ export async function readServiceById(id: bigint): Promise<ServiceView | null> {
   } catch {
     return null;
   }
+}
+
+/// Count services the `viewer` has paid for but never rated. Powers the
+/// burger drawer's red-dot "you have something to do" badge. Reads two
+/// event filters in parallel: payments where viewer is `buyer`, ratings
+/// where viewer is `rater`. The diff (paid but not rated) is the
+/// actionable count.
+export async function countUnratedPaidServices(viewer: Address): Promise<number> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return 0;
+  const client = getPublicClient();
+
+  const [paidLogs, ratedLogs] = await Promise.all([
+    client.getLogs({
+      address: registry,
+      event: SERVICE_PAID_EVENT,
+      args: { buyer: viewer },
+      fromBlock: 'earliest',
+    }),
+    client.getLogs({
+      address: registry,
+      event: SERVICE_RATED_EVENT,
+      args: { rater: viewer },
+      fromBlock: 'earliest',
+    }),
+  ]);
+
+  const paid = new Set<string>();
+  for (const l of paidLogs) {
+    if (l.args.id != null) paid.add(String(l.args.id));
+  }
+  const rated = new Set<string>();
+  for (const l of ratedLogs) {
+    if (l.args.id != null) rated.add(String(l.args.id));
+  }
+
+  let unrated = 0;
+  for (const id of paid) {
+    if (!rated.has(id)) unrated += 1;
+  }
+  return unrated;
 }
 
 /// Read every `ServiceRated` event for one service and bucket the latest

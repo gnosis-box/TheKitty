@@ -16,6 +16,8 @@ import {
   ratingAverage,
   readMyServices,
   readPaidServiceIdsByPayer,
+  readProviderWeeklyStreak,
+  type ProviderStreak,
   type ServiceView,
 } from '@/lib/services-reader';
 import { buildRateServiceTx } from '@/lib/tx-builders';
@@ -41,6 +43,7 @@ export default function ProviderProfileRoute() {
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
+  const [streak, setStreak] = useState<ProviderStreak | null>(null);
   const [openRateFor, setOpenRateFor] = useState<string | null>(null);
   const [rating, setRating] = useState(false);
   const [trustedByViewer, setTrustedByViewer] = useState<boolean | undefined>(
@@ -50,7 +53,7 @@ export default function ProviderProfileRoute() {
 
   async function refresh(p: Address) {
     const isSelfNow = viewer && viewer.toLowerCase() === p.toLowerCase();
-    const [list, paid, isTrustedRaw] = await Promise.all([
+    const [list, paid, isTrustedRaw, streakRaw] = await Promise.all([
       readMyServices(p),
       !isSelfNow && viewer
         ? readPaidServiceIdsByPayer(viewer as Address, p)
@@ -63,10 +66,12 @@ export default function ProviderProfileRoute() {
             args: [viewer as Address, p],
           }) as Promise<boolean>)
         : Promise.resolve(undefined as boolean | undefined),
+      readProviderWeeklyStreak(p),
     ]);
     setServices(list);
     setPaidIds(paid);
     setTrustedByViewer(isTrustedRaw);
+    setStreak(streakRaw);
   }
 
   useEffect(() => {
@@ -199,6 +204,19 @@ export default function ProviderProfileRoute() {
               </p>
               <CopyAddressButton address={provider} />
             </div>
+            {streak && streak.weeks > 0 && (
+              <p
+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-900"
+                title="Consecutive ISO weeks (Mon–Sun UTC) with at least one payment received"
+              >
+                🔥 {streak.weeks} week{streak.weeks === 1 ? '' : 's'} active
+                {!streak.currentWeekCounted && (
+                  <span className="font-normal text-amber-700">
+                    · break-the-streak this week
+                  </span>
+                )}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
