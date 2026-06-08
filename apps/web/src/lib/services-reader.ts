@@ -54,6 +54,124 @@ export async function readPaidServiceIdsByPayer(
   return out;
 }
 
+/// Compact per-provider activity summary for the leaderboard on
+/// `/stats`. We aggregate ServicePaid events network-wide, group by
+/// `provider`, and rank by total CRC received. Cheap at hackathon scale
+/// (one eth_getLogs + client-side reduce); scales to a few hundred
+/// payments before we'd need a subgraph.
+export interface ProviderActivity {
+  provider: Address;
+  totalCrcReceived: bigint;
+  paymentCount: number;
+  /// Number of distinct buyer addresses.
+  uniqueBuyers: number;
+}
+
+export async function readTopProvidersByActivity(
+  limit = 10,
+): Promise<ProviderActivity[]> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return [];
+  const client = getPublicClient();
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    fromBlock: 'earliest',
+  });
+
+  const byProvider = new Map<
+    string,
+    { provider: Address; total: bigint; count: number; buyers: Set<string> }
+  >();
+  for (const l of logs) {
+    const provider = l.args.provider as Address | undefined;
+    const amount = l.args.amount as bigint | undefined;
+    const buyer = l.args.buyer as Address | undefined;
+    if (!provider || amount == null || !buyer) continue;
+    const key = provider.toLowerCase();
+    const slot = byProvider.get(key) ?? {
+      provider,
+      total: 0n,
+      count: 0,
+      buyers: new Set<string>(),
+    };
+    slot.total += amount;
+    slot.count += 1;
+    slot.buyers.add(buyer.toLowerCase());
+    byProvider.set(key, slot);
+  }
+
+  const out: ProviderActivity[] = [];
+  for (const slot of byProvider.values()) {
+    out.push({
+      provider: slot.provider,
+      totalCrcReceived: slot.total,
+      paymentCount: slot.count,
+      uniqueBuyers: slot.buyers.size,
+    });
+  }
+  out.sort((a, b) => {
+    if (a.totalCrcReceived === b.totalCrcReceived) {
+      return b.paymentCount - a.paymentCount;
+    }
+    return a.totalCrcReceived < b.totalCrcReceived ? 1 : -1;
+  });
+  return out.slice(0, limit);
+}
+
+/// Network-wide stream of recent `ServicePaid` events, newest first.
+/// Powers the "Recently paid in your network" feed on `/services` — the
+/// daily-fresh content that gives users a reason to keep opening the
+/// app. No indexed filter (we want every payment), so we cap the
+/// fromBlock window if it ever gets too heavy; today the registry is
+/// small enough that fromBlock='earliest' is fine.
+export async function readNetworkRecentPayments(
+  limit = 5,
+): Promise<RecentPayment[]> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return [];
+  const client = getPublicClient();
+  const logs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    fromBlock: 'earliest',
+  });
+  const out: RecentPayment[] = [];
+  for (const l of logs) {
+    if (l.args.id == null || l.args.amount == null || l.args.buyer == null)
+      continue;
+    out.push({
+      serviceId: l.args.id as bigint,
+      buyer: l.args.buyer as Address,
+      amount: l.args.amount as bigint,
+      memo: (l.args.memo as string) ?? '',
+      blockNumber: l.blockNumber!,
+      txHash: l.transactionHash!,
+    });
+  }
+  out.sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : -1));
+  return out.slice(0, limit);
+}
+
+/// Resolve a service title for an id. Cheap single read per id; the
+/// caller should cache or batch via multicall if scaled up.
+export async function readServiceTitle(id: bigint): Promise<string | null> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return null;
+  const client = getPublicClient();
+  try {
+    const s = (await client.readContract({
+      abi: serviceRegistryAbi,
+      address: registry,
+      functionName: 'getService',
+      args: [id],
+    })) as RawService;
+    return s.title;
+  } catch {
+    return null;
+  }
+}
+
 /// Pull every payment the provider has received via `logPayment`, newest
 /// first. Used by `/services/mine` to show a "Last:" line under each
 /// service. One eth_getLogs call thanks to the `provider` indexed filter.

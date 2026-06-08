@@ -1,6 +1,7 @@
 import {
   ExternalLink,
   Github,
+  HandCoins,
   HeartHandshake,
   Network,
   ScrollText,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import { BurgerButton } from '@/components/BurgerButton';
+import { TipBuilder } from '@/components/TipBuilder';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { shortAddress } from '@/lib/utils';
@@ -256,6 +258,21 @@ export default function AboutRoute() {
             github.com/gnosis-box/TheKitty
             <ExternalLink className="size-3.5" />
           </a>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HandCoins className="size-4" /> Tip the builder
+          </CardTitle>
+          <CardDescription>
+            CRC stays inside the trust circle. Same flow you'd use for any
+            service.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <TipBuilder />
         </CardContent>
       </Card>
     </main>

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(su - max -c \"gh repo view Wieedze/sdk 2>&1 | head -3\")",
+      "Bash(su - max -c \"git remote add fork https://github.com/Wieedze/sdk.git 2>&1\")",
+      "Bash(su - max -c \"git remote add fork https://github.com/Wieedze/sdk.git && git remote -v\")",
+      "Bash(su - max -c \"cd /tmp/aboutcircles-sdk && git push -u fork feat/runner-miniapp\")",
+      "Bash(su - max bash -c 'git remote add fork https://github.com/Wieedze/sdk.git && git remote -v')",
+      "Bash(su - max bash -c 'cd /tmp/aboutcircles-sdk && git push -u fork feat/runner-miniapp 2>&1 | tail -10')",
+      "Bash(chown max:max /tmp/do_remote.sh)",
+      "Bash(chmod +x /tmp/do_remote.sh)",
+      "Bash(su - max -c \"/tmp/do_remote.sh\")",
+      "Bash(chown max:max /tmp/do_pr.sh)",
+      "Bash(chmod +x /tmp/do_pr.sh)",
+      "Bash(su - max -c \"/tmp/do_pr.sh\")"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownUp, Plus, Search, Store } from 'lucide-react';
+import { ArrowDownUp, Plus, Search, Store, Zap } from 'lucide-react';
 
 import { AppFooter } from '@/components/AppFooter';
 import { BurgerButton } from '@/components/BurgerButton';
@@ -20,8 +20,12 @@ import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import {
   ratingAverage,
   readAllActiveServices,
+  readNetworkRecentPayments,
+  type RecentPayment,
   type ServiceView,
 } from '@/lib/services-reader';
+import { readServiceStats, type ServiceStats } from '@/lib/global-stats';
+import { formatCrc } from '@/lib/utils';
 import { useWallet } from '@/hooks/use-wallet';
 
 /// Sort options exposed by the search bar. Keep the list short — every
@@ -44,6 +48,8 @@ export default function ServicesRoute() {
   const registryReady = Boolean(CIRCLES_CONFIG.serviceRegistryAddress);
 
   const [services, setServices] = useState<ServiceView[] | null>(null);
+  const [stats, setStats] = useState<ServiceStats | null>(null);
+  const [recent, setRecent] = useState<RecentPayment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<ServiceView | null>(null);
   const [query, setQuery] = useState('');
@@ -52,14 +58,24 @@ export default function ServicesRoute() {
   const fetchServices = useCallback(async () => {
     if (!registryReady) {
       setServices([]);
+      setStats(null);
+      setRecent([]);
       return;
     }
     try {
-      const list = await readAllActiveServices(address ?? undefined);
+      const [list, statsAgg, recentList] = await Promise.all([
+        readAllActiveServices(address ?? undefined),
+        readServiceStats(),
+        readNetworkRecentPayments(5),
+      ]);
       setServices(list);
+      setStats(statsAgg);
+      setRecent(recentList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
       setServices([]);
+      setStats(null);
+      setRecent([]);
     }
   }, [address, registryReady]);
 
@@ -152,12 +168,52 @@ export default function ServicesRoute() {
 
       <InviterBanner selfAddress={address} />
 
+      {stats && stats.servicesPublished > 0 && (
+        <p className="inline-flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--color-muted)]">
+          <Zap className="size-3 text-amber-500" />
+          <strong className="font-mono text-[var(--color-text)]">{stats.activeServices}</strong>
+          {' active · '}
+          <strong className="font-mono text-[var(--color-text)]">{stats.activeProviders}</strong>
+          {' providers · '}
+          <strong className="font-mono text-[var(--color-text)]">{formatCrc(stats.totalCrcPaid)}</strong>
+          {' CRC circulated · '}
+          <strong className="font-mono text-[var(--color-text)]">{stats.paymentsLogged}</strong>
+          {' payments'}
+        </p>
+      )}
+
       <Link
         to="/services/new"
         className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[0_10px_28px_-12px_var(--color-shadow)] hover:brightness-110"
       >
         <Plus className="size-4" /> Publish a service
       </Link>
+
+      {recent && recent.length > 0 && (
+        <section className="flex flex-col gap-1.5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            Recently paid in your network
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {recent.map((p) => (
+              <Link
+                key={p.txHash}
+                to={`/services/${p.serviceId.toString()}`}
+                className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-hi)] px-3 py-2 hover:bg-[var(--color-border)]"
+              >
+                <MemberAvatar address={p.buyer} size="xs" />
+                <span className="flex-1 truncate text-[11px] text-[var(--color-muted)]">
+                  paid service #{p.serviceId.toString()}
+                  {p.memo && <span className="ml-1 italic">"{p.memo}"</span>}
+                </span>
+                <span className="shrink-0 font-mono text-[11px]">
+                  {formatCrc(p.amount)} CRC
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {services !== null && services.length > 0 && (
         <div className="flex items-center gap-2">

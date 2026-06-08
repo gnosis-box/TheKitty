@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   Coins,
+  Crown,
   ExternalLink,
   HandCoins,
   RotateCw as RotateIcon,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { BurgerButton } from '@/components/BurgerButton';
+import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
@@ -20,26 +23,37 @@ import {
   type GlobalStats,
   type ServiceStats,
 } from '@/lib/global-stats';
+import {
+  readTopProvidersByActivity,
+  type ProviderActivity,
+} from '@/lib/services-reader';
 import { formatCrc, shortAddress } from '@/lib/utils';
 
 export default function StatsRoute() {
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [services, setServices] = useState<ServiceStats | null>(null);
+  const [leaderboard, setLeaderboard] = useState<ProviderActivity[] | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [s, sv] = await Promise.all([readGlobalStats(), readServiceStats()]);
+        const [s, sv, lb] = await Promise.all([
+          readGlobalStats(),
+          readServiceStats(),
+          readTopProvidersByActivity(10),
+        ]);
         if (!cancelled) {
           setStats(s);
           setServices(sv);
+          setLeaderboard(lb);
         }
       } catch {
         if (!cancelled) {
           setStats(null);
           setServices(null);
+          setLeaderboard(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -154,6 +168,61 @@ export default function StatsRoute() {
                 value={formatCrc(stats.totalPaidOut)}
               />
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Crown className="size-4" /> Top providers
+          </CardTitle>
+          <CardDescription>
+            Ranked by CRC received through the ServiceRegistry. The leaderboard
+            is the network's reputation in motion.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 rounded-lg" />
+              ))}
+            </div>
+          ) : !leaderboard || leaderboard.length === 0 ? (
+            <p className="text-sm text-[var(--color-muted)]">
+              No payments yet — the first provider paid lands here.
+            </p>
+          ) : (
+            <ol className="flex flex-col gap-1.5">
+              {leaderboard.map((entry, idx) => (
+                <li key={entry.provider}>
+                  <Link
+                    to={`/providers/${entry.provider.toLowerCase()}`}
+                    className="flex items-center gap-3 rounded-lg bg-[var(--color-surface-hi)] px-3 py-2 hover:bg-[var(--color-border)]"
+                  >
+                    <span className="w-5 shrink-0 text-center font-mono text-[11px] text-[var(--color-muted)]">
+                      {idx + 1}
+                    </span>
+                    <MemberAvatar address={entry.provider} size="xs" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-mono text-[11px]">
+                        {shortAddress(entry.provider)}
+                      </p>
+                      <p className="text-[10px] text-[var(--color-muted)]">
+                        {entry.paymentCount} payment
+                        {entry.paymentCount === 1 ? '' : 's'} · {entry.uniqueBuyers}{' '}
+                        buyer{entry.uniqueBuyers === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-mono text-sm">
+                      {formatCrc(entry.totalCrcReceived)}
+                      <span className="ml-1 text-[10px] text-[var(--color-muted)]">CRC</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
           )}
         </CardContent>
       </Card>
