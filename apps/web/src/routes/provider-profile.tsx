@@ -13,6 +13,7 @@ import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { hubV2Abi } from '@/lib/abi/hub-v2';
 import { getPublicClient } from '@/lib/public-client';
 import {
+  countTrustsWhoPaidProvider,
   ratingAverage,
   readMyServices,
   readPaidServiceIdsByPayer,
@@ -49,11 +50,12 @@ export default function ProviderProfileRoute() {
   const [trustedByViewer, setTrustedByViewer] = useState<boolean | undefined>(
     undefined,
   );
+  const [trustsWhoPaid, setTrustsWhoPaid] = useState<Address[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function refresh(p: Address) {
     const isSelfNow = viewer && viewer.toLowerCase() === p.toLowerCase();
-    const [list, paid, isTrustedRaw, streakRaw] = await Promise.all([
+    const [list, paid, isTrustedRaw, streakRaw, social] = await Promise.all([
       readMyServices(p),
       !isSelfNow && viewer
         ? readPaidServiceIdsByPayer(viewer as Address, p)
@@ -67,11 +69,15 @@ export default function ProviderProfileRoute() {
           }) as Promise<boolean>)
         : Promise.resolve(undefined as boolean | undefined),
       readProviderWeeklyStreak(p),
+      !isSelfNow && viewer
+        ? countTrustsWhoPaidProvider(viewer as Address, p)
+        : Promise.resolve({ count: 0, trusts: [] as Address[] }),
     ]);
     setServices(list);
     setPaidIds(paid);
     setTrustedByViewer(isTrustedRaw);
     setStreak(streakRaw);
+    setTrustsWhoPaid(social.trusts);
   }
 
   useEffect(() => {
@@ -204,6 +210,26 @@ export default function ProviderProfileRoute() {
               </p>
               <CopyAddressButton address={provider} />
             </div>
+            {trustsWhoPaid.length > 0 && !trustedByViewer && (
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-2.5">
+                <div className="flex -space-x-2">
+                  {trustsWhoPaid.slice(0, 3).map((t) => (
+                    <div
+                      key={t}
+                      className="rounded-full ring-2 ring-[var(--color-surface)]"
+                      title={shortAddress(t)}
+                    >
+                      <MemberAvatar address={t} size="xs" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] leading-snug text-amber-900">
+                  <strong>{trustsWhoPaid.length}</strong> of your trusts paid
+                  here. Tap <em>Trust</em> above to add this provider to your
+                  circle.
+                </p>
+              </div>
+            )}
             {streak && streak.weeks > 0 && (
               <p
                 className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-900"

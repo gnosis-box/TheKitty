@@ -14,6 +14,10 @@ const SERVICE_RATED_EVENT = parseAbiItem(
   'event ServiceRated(uint64 indexed id, address indexed rater, uint8 stars, uint64 ratingsCount, uint128 ratingsSum)',
 );
 
+const TRUST_EVENT = parseAbiItem(
+  'event Trust(address indexed truster, address indexed trustee, uint256 expiryTime)',
+);
+
 /// Bucketed star counts for a service, taking the latest rating per rater
 /// so re-rates don't double-count. `1..5` keys are the star levels.
 export type RatingBreakdown = Record<1 | 2 | 3 | 4 | 5, number>;
@@ -52,6 +56,178 @@ export async function readPaidServiceIdsByPayer(
     if (l.args.id != null) out.add(String(l.args.id));
   }
   return out;
+}
+
+/// Discovery surface: providers the viewer doesn't yet trust but at
+/// least one of their direct trusts has paid. Powers the *"Recommended
+/// by your circle"* section on `/services`. Composes with rewards
+/// (recommend → trust → pay → contribute to community pool).
+export interface DiscoveredProvider {
+  provider: Address;
+  /// Viewer's direct trusts who have paid this provider.
+  trustsWhoPaid: Address[];
+  /// Total CRC those trusts have collectively paid this provider.
+  trustsTotalCrcPaid: bigint;
+  /// Total payments those trusts have made to this provider (helps tie-break).
+  trustsPaymentCount: number;
+}
+
+export async function readProvidersDiscoveredViaTrustGraph(
+  viewer: Address,
+  limit = 10,
+): Promise<DiscoveredProvider[]> {
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return [];
+  const client = getPublicClient();
+
+  // 1. Discover the viewer's direct outgoing trusts via Hub V2 Trust
+  // events. A revocation on Hub V2 is a `trust(addr, expiry < now)`
+  // call, so we keep the *max* expiry seen per trustee and treat any
+  // value <= `now` as inactive.
+  const trustLogs = await client.getLogs({
+    address: CIRCLES_CONFIG.v2HubAddress,
+    event: TRUST_EVENT,
+    args: { truster: viewer },
+    fromBlock: 'earliest',
+  });
+  const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const latestExpiryByTrustee = new Map<string, bigint>();
+  for (const l of trustLogs) {
+    if (!l.args.trustee || l.args.expiryTime == null) continue;
+    const key = String(l.args.trustee).toLowerCase();
+    const prev = latestExpiryByTrustee.get(key);
+    const expiry = l.args.expiryTime as bigint;
+    if (prev == null || expiry > prev) latestExpiryByTrustee.set(key, expiry);
+  }
+  const activeTrusts = new Set<string>();
+  for (const [trustee, expiry] of latestExpiryByTrustee) {
+    if (expiry > nowSec) activeTrusts.add(trustee);
+  }
+  activeTrusts.delete(viewer.toLowerCase());
+  if (activeTrusts.size === 0) return [];
+
+  // 2. Pull every ServicePaid event where the buyer was one of those
+  // trusts. One filtered getLogs per buyer — at hackathon scale (10s
+  // of trusts) that's cheap; past 100s we'd need a subgraph.
+  const trustList = Array.from(activeTrusts) as Address[];
+  const paidLogsByBuyer = await Promise.all(
+    trustList.map((buyer) =>
+      client.getLogs({
+        address: registry,
+        event: SERVICE_PAID_EVENT,
+        args: { buyer },
+        fromBlock: 'earliest',
+      }),
+    ),
+  );
+
+  // 3. Group by provider, filter out providers the viewer already
+  // trusts (discovery is for *new* connections), filter out viewer
+  // themselves, and rank by signal strength.
+  const byProvider = new Map<
+    string,
+    {
+      provider: Address;
+      trusts: Set<string>;
+      total: bigint;
+      count: number;
+    }
+  >();
+  paidLogsByBuyer.forEach((logs, i) => {
+    const buyer = trustList[i].toLowerCase();
+    for (const l of logs) {
+      const provider = l.args.provider as Address | undefined;
+      const amount = l.args.amount as bigint | undefined;
+      if (!provider || amount == null) continue;
+      const key = provider.toLowerCase();
+      if (activeTrusts.has(key)) continue;
+      if (key === viewer.toLowerCase()) continue;
+      const slot = byProvider.get(key) ?? {
+        provider,
+        trusts: new Set<string>(),
+        total: 0n,
+        count: 0,
+      };
+      slot.trusts.add(buyer);
+      slot.total += amount;
+      slot.count += 1;
+      byProvider.set(key, slot);
+    }
+  });
+
+  const out: DiscoveredProvider[] = [];
+  for (const slot of byProvider.values()) {
+    out.push({
+      provider: slot.provider,
+      trustsWhoPaid: Array.from(slot.trusts) as Address[],
+      trustsTotalCrcPaid: slot.total,
+      trustsPaymentCount: slot.count,
+    });
+  }
+  out.sort((a, b) => {
+    if (a.trustsWhoPaid.length !== b.trustsWhoPaid.length) {
+      return b.trustsWhoPaid.length - a.trustsWhoPaid.length;
+    }
+    if (a.trustsTotalCrcPaid !== b.trustsTotalCrcPaid) {
+      return a.trustsTotalCrcPaid < b.trustsTotalCrcPaid ? 1 : -1;
+    }
+    return b.trustsPaymentCount - a.trustsPaymentCount;
+  });
+  return out.slice(0, limit);
+}
+
+/// Count how many of the viewer's direct trusts have paid a specific
+/// `provider`. Used by the `/providers/:address` social banner ("3 of
+/// your trusts paid here"). Returns 0 when viewer is undefined or the
+/// provider is the viewer.
+export async function countTrustsWhoPaidProvider(
+  viewer: Address,
+  provider: Address,
+): Promise<{ count: number; trusts: Address[] }> {
+  if (viewer.toLowerCase() === provider.toLowerCase()) {
+    return { count: 0, trusts: [] };
+  }
+  const client = getPublicClient();
+  const trustLogs = await client.getLogs({
+    address: CIRCLES_CONFIG.v2HubAddress,
+    event: TRUST_EVENT,
+    args: { truster: viewer },
+    fromBlock: 'earliest',
+  });
+  const nowSec = BigInt(Math.floor(Date.now() / 1000));
+  const latestExpiryByTrustee = new Map<string, bigint>();
+  for (const l of trustLogs) {
+    if (!l.args.trustee || l.args.expiryTime == null) continue;
+    const key = String(l.args.trustee).toLowerCase();
+    const prev = latestExpiryByTrustee.get(key);
+    const expiry = l.args.expiryTime as bigint;
+    if (prev == null || expiry > prev) latestExpiryByTrustee.set(key, expiry);
+  }
+  const activeTrusts = new Set<string>();
+  for (const [trustee, expiry] of latestExpiryByTrustee) {
+    if (expiry > nowSec) activeTrusts.add(trustee);
+  }
+  if (activeTrusts.size === 0) return { count: 0, trusts: [] };
+
+  const registry = CIRCLES_CONFIG.serviceRegistryAddress;
+  if (!registry) return { count: 0, trusts: [] };
+
+  const paidLogs = await client.getLogs({
+    address: registry,
+    event: SERVICE_PAID_EVENT,
+    args: { provider },
+    fromBlock: 'earliest',
+  });
+  const matchingTrusts = new Set<string>();
+  for (const l of paidLogs) {
+    if (!l.args.buyer) continue;
+    const buyer = String(l.args.buyer).toLowerCase();
+    if (activeTrusts.has(buyer)) matchingTrusts.add(buyer);
+  }
+  return {
+    count: matchingTrusts.size,
+    trusts: Array.from(matchingTrusts) as Address[],
+  };
 }
 
 /// Compact per-provider activity summary for the leaderboard on

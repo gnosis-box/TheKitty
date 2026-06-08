@@ -66,4 +66,18 @@ export const hubV2Abi = [
     ],
     outputs: [{ type: 'bool' }],
   },
+  /// Emitted on every `trust` call. Used by the discovery reader to list
+  /// the viewer's outgoing trusts (truster = viewer). The `expiryTime`
+  /// lets the reader filter expired or revoked trusts (revocation = a
+  /// trust call with `expiry < now`).
+  {
+    type: 'event',
+    name: 'Trust',
+    inputs: [
+      { indexed: true, name: 'truster', type: 'address' },
+      { indexed: true, name: 'trustee', type: 'address' },
+      { indexed: false, name: 'expiryTime', type: 'uint256' },
+    ],
+    anonymous: false,
+  },
 ] as const;

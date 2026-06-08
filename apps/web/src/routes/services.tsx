@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDownUp, Plus, Search, Store, Zap } from 'lucide-react';
+import { ArrowDownUp, Plus, Search, Sparkles, Store, Zap } from 'lucide-react';
 
 import { AppFooter } from '@/components/AppFooter';
 import { BurgerButton } from '@/components/BurgerButton';
@@ -21,12 +21,15 @@ import {
   ratingAverage,
   readAllActiveServices,
   readNetworkRecentPayments,
+  readProvidersDiscoveredViaTrustGraph,
+  type DiscoveredProvider,
   type RecentPayment,
   type ServiceView,
 } from '@/lib/services-reader';
 import { readServiceStats, type ServiceStats } from '@/lib/global-stats';
-import { formatCrc } from '@/lib/utils';
+import { formatCrc, shortAddress } from '@/lib/utils';
 import { useWallet } from '@/hooks/use-wallet';
+import type { Address } from '@/types/kitty';
 
 /// Sort options exposed by the search bar. Keep the list short — every
 /// option corresponds to a different mental model the buyer might have
@@ -50,6 +53,7 @@ export default function ServicesRoute() {
   const [services, setServices] = useState<ServiceView[] | null>(null);
   const [stats, setStats] = useState<ServiceStats | null>(null);
   const [recent, setRecent] = useState<RecentPayment[] | null>(null);
+  const [discovered, setDiscovered] = useState<DiscoveredProvider[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [payTarget, setPayTarget] = useState<ServiceView | null>(null);
   const [query, setQuery] = useState('');
@@ -60,22 +64,28 @@ export default function ServicesRoute() {
       setServices([]);
       setStats(null);
       setRecent([]);
+      setDiscovered([]);
       return;
     }
     try {
-      const [list, statsAgg, recentList] = await Promise.all([
+      const [list, statsAgg, recentList, discoveredList] = await Promise.all([
         readAllActiveServices(address ?? undefined),
         readServiceStats(),
         readNetworkRecentPayments(5),
+        address
+          ? readProvidersDiscoveredViaTrustGraph(address, 3)
+          : Promise.resolve([] as DiscoveredProvider[]),
       ]);
       setServices(list);
       setStats(statsAgg);
       setRecent(recentList);
+      setDiscovered(discoveredList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
       setServices([]);
       setStats(null);
       setRecent([]);
+      setDiscovered([]);
     }
   }, [address, registryReady]);
 
@@ -188,6 +198,19 @@ export default function ServicesRoute() {
       >
         <Plus className="size-4" /> Publish a service
       </Link>
+
+      {discovered.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <p className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-[var(--color-muted)]">
+            <Sparkles className="size-3 text-amber-500" /> Recommended by your circle
+          </p>
+          <div className="flex flex-col gap-2">
+            {discovered.map((d) => (
+              <RecommendedProvider key={d.provider} entry={d} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {recent && recent.length > 0 && (
         <section className="flex flex-col gap-1.5">
@@ -341,6 +364,50 @@ export default function ServicesRoute() {
         />
       )}
     </main>
+  );
+}
+
+/// Compact card for the *"Recommended by your circle"* discovery
+/// surface. Shows the provider's avatar + a short pitch keyed off the
+/// number of viewer's trusts who have paid them, with an avatar stack
+/// of those trusts as social proof. CTA navigates to the provider's
+/// profile where the `<TrustButton>` lives — keeps the trust action
+/// in one canonical place rather than duplicating it on every card.
+function RecommendedProvider({ entry }: { entry: DiscoveredProvider }) {
+  const stack = entry.trustsWhoPaid.slice(0, 3);
+  const more = entry.trustsWhoPaid.length - stack.length;
+  const count = entry.trustsWhoPaid.length;
+  return (
+    <Link
+      to={`/providers/${entry.provider.toLowerCase()}`}
+      className="flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 hover:bg-amber-500/10"
+    >
+      <MemberAvatar address={entry.provider} size="sm" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {shortAddress(entry.provider)}
+        </p>
+        <p className="text-[11px] text-amber-900">
+          {count} of your trusts paid here · {formatCrc(entry.trustsTotalCrcPaid)} CRC total
+        </p>
+      </div>
+      <div className="flex shrink-0 -space-x-2">
+        {stack.map((addr: Address) => (
+          <div
+            key={addr}
+            className="ring-2 ring-[var(--color-surface)] rounded-full"
+            title={shortAddress(addr)}
+          >
+            <MemberAvatar address={addr} size="xs" />
+          </div>
+        ))}
+        {more > 0 && (
+          <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-amber-500/20 text-[10px] font-medium text-amber-900 ring-2 ring-[var(--color-surface)]">
+            +{more}
+          </span>
+        )}
+      </div>
+    </Link>
   );
 }
 
