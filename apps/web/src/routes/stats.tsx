@@ -79,6 +79,8 @@ export default function StatsRoute() {
         </div>
       </header>
 
+      <PrizePoolCard />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -302,12 +304,109 @@ export default function StatsRoute() {
                   </a>
                 </p>
               )}
+              <p>
+                Community pool Safe:
+                <a
+                  href={`https://gnosisscan.io/address/${CIRCLES_CONFIG.communityPoolAddress}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-1 inline-flex items-center gap-1 font-mono hover:text-[var(--color-text)]"
+                >
+                  {shortAddress(CIRCLES_CONFIG.communityPoolAddress)}
+                  <ExternalLink className="size-3" />
+                </a>
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
     </main>
   );
+}
+
+/// `/stats` headline — the weekly prize pool. Surfaces the pool's Safe
+/// address, a countdown to the next Sunday 18h UTC draw, and a quick
+/// link to view the on-chain balance directly. V1 is intentionally
+/// thin — we'll wire actual contribution aggregation + eligible-buyer
+/// list once we have more than a handful of paid services to draw from.
+function PrizePoolCard() {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const nextDrawMs = useMemo(() => nextSundayEveningUtc(now), [now]);
+  const remainingMs = Math.max(0, nextDrawMs - now);
+
+  return (
+    <Card className="border-amber-500/40 bg-amber-500/5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Crown className="size-4 text-amber-500" /> This week's prize pool
+        </CardTitle>
+        <CardDescription>
+          Funded by every service's opt-in community share. One eligible buyer
+          wins the pot every Sunday at 18:00 UTC.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <Stat
+            icon={<RotateIcon className="size-3.5" />}
+            label="Next draw in"
+            value={formatRemaining(remainingMs)}
+            hint="Sun · 18:00 UTC"
+          />
+          <Stat
+            icon={<Coins className="size-3.5" />}
+            label="Pool Safe"
+            value={shortAddress(CIRCLES_CONFIG.communityPoolAddress)}
+            hint="Check on gnosisscan"
+          />
+        </div>
+        <a
+          href={`https://gnosisscan.io/address/${CIRCLES_CONFIG.communityPoolAddress}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-900 hover:underline"
+        >
+          <ExternalLink className="size-3" /> View pool balance on gnosisscan
+        </a>
+        <p className="mt-2 text-[11px] text-[var(--color-muted)]">
+          Eligible = any human who paid at least one service between Monday 00h
+          UTC and Sunday 23h59 UTC. Manual draw V1; on-chain RewardPool draw in
+          a future republish.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/// Returns the unix-ms timestamp of the next Sunday at 18:00 UTC after
+/// `nowMs`. Used for the draw countdown.
+function nextSundayEveningUtc(nowMs: number): number {
+  const d = new Date(nowMs);
+  const dayUtc = d.getUTCDay(); // 0 = Sunday
+  const hUtc = d.getUTCHours();
+  // Days to advance to reach the next Sunday 18h UTC.
+  let daysToAdd = (7 - dayUtc) % 7;
+  if (daysToAdd === 0 && hUtc >= 18) daysToAdd = 7;
+  const target = new Date(d);
+  target.setUTCDate(d.getUTCDate() + daysToAdd);
+  target.setUTCHours(18, 0, 0, 0);
+  return target.getTime();
+}
+
+function formatRemaining(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 interface StatProps {

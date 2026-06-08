@@ -18,6 +18,7 @@ import {
   type GroupPotPaySource,
 } from '@/lib/kitty-pay-sources';
 import { readPersonalCrcBalance } from '@/lib/kitty-reader';
+import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
 import type { Address } from '@/types/kitty';
@@ -68,6 +69,17 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const viewer = address as Address | null;
   const trusted = service.trustedByViewer === true;
   const priceLabel = formatCrc(service.priceCrc);
+
+  /// Wallet-path split between provider and the community pool. Group-pot
+  /// payments stay 100% provider in V1 (the kitty's smallSpend writes a
+  /// single recipient). Re-computed on every render so a slider change in
+  /// edit mode reflects immediately.
+  const poolCut = useMemo(() => {
+    const bps = BigInt(service.poolShareBps ?? 0);
+    return (service.priceCrc * bps) / 10000n;
+  }, [service.priceCrc, service.poolShareBps]);
+  const providerCut = service.priceCrc - poolCut;
+  const hasPoolCut = poolCut > 0n;
 
   // Lock body scroll while the sheet is up.
   useEffect(() => {
@@ -174,7 +186,9 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
         bundle = [smallSpendTx, logTx];
       } else {
         // Wallet: typed Hub V2 wrappers from sdk-core. Personal CRC token
-        // id == uint256(uint160(viewer)).
+        // id == uint256(uint160(viewer)). When the provider has opted in
+        // to a community share, we slice off the cut and send it to the
+        // pool address in the same bundle — still one buyer signature.
         const core = circlesSdk.core;
         const tokenId = BigInt(viewer);
         const reqs = [
@@ -185,9 +199,20 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
             viewer,
             service.provider,
             tokenId,
-            service.priceCrc,
+            providerCut,
             '0x',
           ),
+          ...(hasPoolCut
+            ? [
+                core.hubV2.safeTransferFrom(
+                  viewer,
+                  CIRCLES_CONFIG.communityPoolAddress,
+                  tokenId,
+                  poolCut,
+                  '0x',
+                ),
+              ]
+            : []),
         ];
         bundle = [
           ...reqs.map((r) => ({
@@ -452,6 +477,28 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
             })}
           </div>
         </section>
+
+        {hasPoolCut && source.type === 'wallet' && (
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] leading-relaxed">
+            <p className="font-medium text-amber-900">
+              ✨ This service contributes {(service.poolShareBps / 100).toFixed(
+                service.poolShareBps % 100 === 0 ? 0 : 1,
+              )}
+              % to the community pool
+            </p>
+            <p className="mt-1 text-[var(--color-muted)]">
+              On your {priceLabel} CRC:{' '}
+              <strong className="font-mono text-[var(--color-text)]">
+                {formatCrc(providerCut)}
+              </strong>{' '}
+              to provider ·{' '}
+              <strong className="font-mono text-[var(--color-text)]">
+                {formatCrc(poolCut)}
+              </strong>{' '}
+              to the weekly prize pool.
+            </p>
+          </div>
+        )}
 
         <section className="mt-4">
           <p className="text-xs uppercase tracking-[0.16em] text-[var(--color-muted)]">

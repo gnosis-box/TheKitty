@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity 0.8.24;
 
-/// @title  ServiceRegistry
+/// @title  ServiceRegistry (v2)
 /// @notice Singleton registry where Circles humans publish small services
 ///         (haircut, coaching, freelance hours, brunch in their flat) priced
 ///         in CRC. Read for free, anyone in the trust graph can pay via a
@@ -13,6 +13,15 @@ pragma solidity 0.8.24;
 ///         records the trace so the front can render stats ("3 cuts paid
 ///         via the Kitty") without scanning every Hub transfer.
 ///
+///         **v2 adds an opt-in `poolShareBps` per service**: the provider
+///         chooses 0–20% (in basis points) of every payment they want
+///         redirected to a community pool. The contract only stores the
+///         declared share — the actual split is computed by the front and
+///         bundled as a second `Hub.safeTransferFrom` to the pool address
+///         in the same signature. Keeping the pool target off-chain at v1
+///         lets us migrate from a Safe-managed pool to a future
+///         `RewardPool.sol` contract without redeploying the registry.
+///
 ///         Active state is enforced for `update` only — `logPayment` always
 ///         accepts so a stale UI race never strands a buyer who already
 ///         paid on the Hub.
@@ -22,6 +31,11 @@ contract ServiceRegistry {
     uint256 public constant MAX_TITLE_LEN = 64;
     uint256 public constant MAX_DESCRIPTION_LEN = 256;
     uint256 public constant MAX_MEMO_LEN = 256;
+    /// @notice Hard cap on the opt-in community pool share. 2000 = 20%.
+    ///         Set conservatively so a provider can't accidentally
+    ///         turn a paid service into a near-100% donation; if real
+    ///         usage shows the cap is too low we'll bump it in v3.
+    uint16 public constant MAX_POOL_SHARE_BPS = 2000;
 
     struct Service {
         uint64 id;
@@ -32,6 +46,11 @@ contract ServiceRegistry {
         uint32 durationMins;
         bool active;
         uint64 createdAt;
+        /// @notice Basis points (0..MAX_POOL_SHARE_BPS) of every payment
+        ///         the provider wants routed to the community pool. The
+        ///         contract does not enforce the routing — the front
+        ///         bundles the second transfer.
+        uint16 poolShareBps;
     }
 
     Service[] private _services;
@@ -59,14 +78,16 @@ contract ServiceRegistry {
         address indexed provider,
         string title,
         uint128 priceCrc,
-        uint32 durationMins
+        uint32 durationMins,
+        uint16 poolShareBps
     );
     event ServiceUpdated(
         uint64 indexed id,
         address indexed provider,
         string title,
         uint128 priceCrc,
-        uint32 durationMins
+        uint32 durationMins,
+        uint16 poolShareBps
     );
     event ServiceDeactivated(uint64 indexed id, address indexed provider);
     event ServicePaid(
@@ -92,6 +113,7 @@ contract ServiceRegistry {
     error DescriptionTooLong();
     error MemoTooLong();
     error BadRating();
+    error PoolShareTooHigh();
 
     // ── write ───────────────────────────────────────────────────────────────
 
@@ -99,12 +121,14 @@ contract ServiceRegistry {
         string calldata title,
         string calldata description,
         uint128 priceCrc,
-        uint32 durationMins
+        uint32 durationMins,
+        uint16 poolShareBps
     ) external returns (uint64 id) {
         uint256 titleLen = bytes(title).length;
         if (titleLen == 0) revert EmptyTitle();
         if (titleLen > MAX_TITLE_LEN) revert TitleTooLong();
         if (bytes(description).length > MAX_DESCRIPTION_LEN) revert DescriptionTooLong();
+        if (poolShareBps > MAX_POOL_SHARE_BPS) revert PoolShareTooHigh();
 
         id = uint64(_services.length);
         _services.push(
@@ -116,11 +140,12 @@ contract ServiceRegistry {
                 priceCrc: priceCrc,
                 durationMins: durationMins,
                 active: true,
-                createdAt: uint64(block.timestamp)
+                createdAt: uint64(block.timestamp),
+                poolShareBps: poolShareBps
             })
         );
         _byProvider[msg.sender].push(id);
-        emit ServicePublished(id, msg.sender, title, priceCrc, durationMins);
+        emit ServicePublished(id, msg.sender, title, priceCrc, durationMins, poolShareBps);
     }
 
     function update(
@@ -128,7 +153,8 @@ contract ServiceRegistry {
         string calldata title,
         string calldata description,
         uint128 priceCrc,
-        uint32 durationMins
+        uint32 durationMins,
+        uint16 poolShareBps
     ) external {
         if (id >= _services.length) revert ServiceNotFound();
         Service storage s = _services[id];
@@ -139,12 +165,14 @@ contract ServiceRegistry {
         if (titleLen == 0) revert EmptyTitle();
         if (titleLen > MAX_TITLE_LEN) revert TitleTooLong();
         if (bytes(description).length > MAX_DESCRIPTION_LEN) revert DescriptionTooLong();
+        if (poolShareBps > MAX_POOL_SHARE_BPS) revert PoolShareTooHigh();
 
         s.title = title;
         s.description = description;
         s.priceCrc = priceCrc;
         s.durationMins = durationMins;
-        emit ServiceUpdated(id, msg.sender, title, priceCrc, durationMins);
+        s.poolShareBps = poolShareBps;
+        emit ServiceUpdated(id, msg.sender, title, priceCrc, durationMins, poolShareBps);
     }
 
     function deactivate(uint64 id) external {
@@ -158,7 +186,9 @@ contract ServiceRegistry {
     /// @notice Record a payment for stats. Anyone can call (the front bundles
     ///         it after a real Hub.safeTransferFrom in the same tx). The
     ///         contract does not verify the CRC actually moved — the trace
-    ///         is advisory.
+    ///         is advisory. `amount` is the full price the buyer paid
+    ///         (before any community-pool split), so aggregate counters
+    ///         reflect the headline number, not the provider's net cut.
     function logPayment(uint64 id, uint128 amount, string calldata memo) external {
         if (id >= _services.length) revert ServiceNotFound();
         if (bytes(memo).length > MAX_MEMO_LEN) revert MemoTooLong();

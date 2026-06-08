@@ -265,6 +265,24 @@ export default function ServicesDetailRoute() {
         </CardContent>
       </Card>
 
+      {service.poolShareBps > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent>
+            <p className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900">
+              ✨ Contributes{' '}
+              {(service.poolShareBps / 100).toFixed(
+                service.poolShareBps % 100 === 0 ? 0 : 1,
+              )}
+              % of every payment to the community pool
+            </p>
+            <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+              The pool funds the weekly prize draw + referral rewards. Top
+              contributors get featured on the services page.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">

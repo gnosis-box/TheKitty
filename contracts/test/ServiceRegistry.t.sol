@@ -19,7 +19,7 @@ contract ServiceRegistryTest is Test {
 
     function test_publish_recordsService() public {
         vm.prank(alice);
-        uint64 id = reg.publish("Coupe de cheveux", "Salon Marseille", 24e18, 60);
+        uint64 id = reg.publish("Coupe de cheveux", "Salon Marseille", 24e18, 60, 0);
         assertEq(id, 0);
         assertEq(reg.serviceCount(), 1);
 
@@ -31,24 +31,25 @@ contract ServiceRegistryTest is Test {
         assertEq(s.priceCrc, 24e18);
         assertEq(s.durationMins, 60);
         assertTrue(s.active);
+        assertEq(s.poolShareBps, 0);
     }
 
     function test_publish_incrementsIds() public {
         vm.prank(alice);
-        reg.publish("A", "", 1, 0);
+        reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
-        uint64 id = reg.publish("B", "", 2, 0);
+        uint64 id = reg.publish("B", "", 2, 0, 0);
         assertEq(id, 1);
         assertEq(reg.serviceCount(), 2);
     }
 
     function test_publish_indexesByProvider() public {
         vm.prank(alice);
-        reg.publish("A", "", 1, 0);
+        reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
-        reg.publish("B", "", 2, 0);
+        reg.publish("B", "", 2, 0, 0);
         vm.prank(bob);
-        reg.publish("C", "", 3, 0);
+        reg.publish("C", "", 3, 0, 0);
 
         ServiceRegistry.Service[] memory ofAlice = reg.servicesByProvider(alice);
         assertEq(ofAlice.length, 2);
@@ -63,66 +64,101 @@ contract ServiceRegistryTest is Test {
     function test_publish_emptyTitleReverts() public {
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.EmptyTitle.selector);
-        reg.publish("", "desc", 1, 0);
+        reg.publish("", "desc", 1, 0, 0);
     }
 
     function test_publish_titleTooLongReverts() public {
         bytes memory big = new bytes(65);
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.TitleTooLong.selector);
-        reg.publish(string(big), "", 1, 0);
+        reg.publish(string(big), "", 1, 0, 0);
     }
 
     function test_publish_descriptionTooLongReverts() public {
         bytes memory big = new bytes(257);
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.DescriptionTooLong.selector);
-        reg.publish("A", string(big), 1, 0);
+        reg.publish("A", string(big), 1, 0, 0);
+    }
+
+    // ── publish · poolShareBps ──────────────────────────────────────────────
+
+    function test_publish_storesPoolShareBps() public {
+        vm.prank(alice);
+        uint64 id = reg.publish("A", "", 24e18, 60, 500); // 5%
+        assertEq(reg.getService(id).poolShareBps, 500);
+    }
+
+    function test_publish_acceptsZeroBps() public {
+        vm.prank(alice);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
+        assertEq(reg.getService(id).poolShareBps, 0);
+    }
+
+    function test_publish_acceptsMaxBps() public {
+        vm.prank(alice);
+        uint64 id = reg.publish("A", "", 1, 0, 2000); // 20%
+        assertEq(reg.getService(id).poolShareBps, 2000);
+    }
+
+    function test_publish_tooHighBpsReverts() public {
+        vm.prank(alice);
+        vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
+        reg.publish("A", "", 1, 0, 2001); // 20.01%
     }
 
     // ── update ──────────────────────────────────────────────────────────────
 
     function test_update_onlyProviderCanUpdate() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         vm.expectRevert(ServiceRegistry.NotProvider.selector);
-        reg.update(id, "A2", "", 2, 0);
+        reg.update(id, "A2", "", 2, 0, 0);
     }
 
     function test_update_appliesChanges() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "old", 1, 30);
+        uint64 id = reg.publish("A", "old", 1, 30, 100);
         vm.prank(alice);
-        reg.update(id, "A2", "new", 9, 90);
+        reg.update(id, "A2", "new", 9, 90, 750);
         ServiceRegistry.Service memory s = reg.getService(id);
         assertEq(s.title, "A2");
         assertEq(s.description, "new");
         assertEq(s.priceCrc, 9);
         assertEq(s.durationMins, 90);
+        assertEq(s.poolShareBps, 750);
     }
 
     function test_update_onDeactivatedReverts() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
         reg.deactivate(id);
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.ServiceInactive.selector);
-        reg.update(id, "A2", "", 2, 0);
+        reg.update(id, "A2", "", 2, 0, 0);
     }
 
     function test_update_unknownIdReverts() public {
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.ServiceNotFound.selector);
-        reg.update(42, "A", "", 1, 0);
+        reg.update(42, "A", "", 1, 0, 0);
+    }
+
+    function test_update_tooHighBpsReverts() public {
+        vm.prank(alice);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
+        vm.prank(alice);
+        vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
+        reg.update(id, "A", "", 1, 0, 2001);
     }
 
     // ── deactivate ──────────────────────────────────────────────────────────
 
     function test_deactivate_flipsActive() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
         reg.deactivate(id);
         assertFalse(reg.getService(id).active);
@@ -130,7 +166,7 @@ contract ServiceRegistryTest is Test {
 
     function test_deactivate_onlyProvider() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         vm.expectRevert(ServiceRegistry.NotProvider.selector);
         reg.deactivate(id);
@@ -138,11 +174,11 @@ contract ServiceRegistryTest is Test {
 
     function test_activeServicesByProvider_filters() public {
         vm.prank(alice);
-        reg.publish("A", "", 1, 0);
+        reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
-        uint64 b = reg.publish("B", "", 2, 0);
+        uint64 b = reg.publish("B", "", 2, 0, 0);
         vm.prank(alice);
-        reg.publish("C", "", 3, 0);
+        reg.publish("C", "", 3, 0, 0);
         vm.prank(alice);
         reg.deactivate(b);
 
@@ -156,7 +192,7 @@ contract ServiceRegistryTest is Test {
 
     function test_logPayment_updatesAggregates() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 24e18, 60);
+        uint64 id = reg.publish("A", "", 24e18, 60, 0);
         vm.prank(bob);
         reg.logPayment(id, 24e18, "coffee");
         assertEq(reg.timesPaid(id), 1);
@@ -176,7 +212,7 @@ contract ServiceRegistryTest is Test {
 
     function test_logPayment_memoTooLongReverts() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         bytes memory big = new bytes(257);
         vm.prank(bob);
         vm.expectRevert(ServiceRegistry.MemoTooLong.selector);
@@ -187,7 +223,7 @@ contract ServiceRegistryTest is Test {
         // Buyer paid via Hub before noticing the deactivation — log must
         // still record so the trace is consistent.
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
         reg.deactivate(id);
         vm.prank(bob);
@@ -199,7 +235,7 @@ contract ServiceRegistryTest is Test {
 
     function test_rate_recordsFirstRating() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         reg.rate(id, 5);
         assertEq(reg.ratingsCount(id), 1);
@@ -209,7 +245,7 @@ contract ServiceRegistryTest is Test {
 
     function test_rate_multipleRatersAccumulate() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         reg.rate(id, 4);
         vm.prank(charlie);
@@ -220,7 +256,7 @@ contract ServiceRegistryTest is Test {
 
     function test_rate_overwritesPreviousRating() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         reg.rate(id, 2);
         vm.prank(bob);
@@ -233,7 +269,7 @@ contract ServiceRegistryTest is Test {
 
     function test_rate_outOfRangeReverts() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(bob);
         vm.expectRevert(ServiceRegistry.BadRating.selector);
         reg.rate(id, 0);
@@ -260,12 +296,19 @@ contract ServiceRegistryTest is Test {
         assertEq(ids.length, 0);
     }
 
+    function test_constants() public view {
+        assertEq(reg.MAX_TITLE_LEN(), 64);
+        assertEq(reg.MAX_DESCRIPTION_LEN(), 256);
+        assertEq(reg.MAX_MEMO_LEN(), 256);
+        assertEq(reg.MAX_POOL_SHARE_BPS(), 2000);
+    }
+
     // ── fuzz ────────────────────────────────────────────────────────────────
 
     /// @dev Per-rater storage holds 1..5 invariant.
     function testFuzz_rate_clamps(uint8 stars) public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0);
+        uint64 id = reg.publish("A", "", 1, 0, 0);
         if (stars == 0 || stars > 5) {
             vm.prank(bob);
             vm.expectRevert(ServiceRegistry.BadRating.selector);
@@ -274,6 +317,18 @@ contract ServiceRegistryTest is Test {
             vm.prank(bob);
             reg.rate(id, stars);
             assertEq(reg.ratingBy(id, bob), stars);
+        }
+    }
+
+    /// @dev Pool share is bounded by MAX_POOL_SHARE_BPS at publish time.
+    function testFuzz_publish_poolShareBpsBounded(uint16 bps) public {
+        vm.prank(alice);
+        if (bps > 2000) {
+            vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
+            reg.publish("A", "", 1, 0, bps);
+        } else {
+            uint64 id = reg.publish("A", "", 1, 0, bps);
+            assertEq(reg.getService(id).poolShareBps, bps);
         }
     }
 }

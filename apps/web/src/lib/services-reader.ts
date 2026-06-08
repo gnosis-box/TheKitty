@@ -215,6 +215,11 @@ export interface ServiceView {
   durationMins: number;
   active: boolean;
   createdAt: number;
+  /// Provider's opt-in cut of every payment routed to the community
+  /// pool, in basis points (0–2000 = 0–20%). 0 = keeps everything,
+  /// 100 = 1% to the pool, etc. The split is computed and bundled by
+  /// the PaySheet; the contract just records the declared share.
+  poolShareBps: number;
   // aggregates
   timesPaid: bigint;
   totalPaid: bigint;
@@ -236,6 +241,7 @@ interface RawService {
   durationMins: number;
   active: boolean;
   createdAt: bigint;
+  poolShareBps: number;
 }
 
 /// Read every active service from the registry, with aggregates and the
@@ -324,6 +330,7 @@ export async function readAllActiveServices(viewer?: Address): Promise<ServiceVi
       durationMins: s.durationMins,
       active: s.active,
       createdAt: Number(s.createdAt),
+      poolShareBps: Number(s.poolShareBps),
       timesPaid: timesPaidRaw[i] as bigint,
       totalPaid: totalPaidRaw[i] as bigint,
       ratingsSum: ratingsSumRaw[i] as bigint,
@@ -383,6 +390,7 @@ export async function readMyServices(provider: Address): Promise<ServiceView[]> 
     durationMins: s.durationMins,
     active: s.active,
     createdAt: Number(s.createdAt),
+    poolShareBps: Number(s.poolShareBps),
     timesPaid: timesPaidRaw[i] as bigint,
     totalPaid: totalPaidRaw[i] as bigint,
     ratingsSum: ratingsSumRaw[i] as bigint,
@@ -419,6 +427,7 @@ export async function readServiceById(id: bigint): Promise<ServiceView | null> {
       durationMins: s.durationMins,
       active: s.active,
       createdAt: Number(s.createdAt),
+      poolShareBps: Number(s.poolShareBps),
       timesPaid,
       totalPaid,
       ratingsSum,

@@ -21,6 +21,12 @@ export interface CirclesConfig {
   /// Singleton service directory deployed by us. Filled in via
   /// VITE_SERVICE_REGISTRY after `DeployServiceRegistry.s.sol`.
   serviceRegistryAddress?: `0x${string}`;
+  /// Community pool Safe (Gnosis Chain) that receives the opt-in
+  /// `poolShareBps` cut from every service payment. Manual draw V1;
+  /// migrates to `RewardPool.sol` in republish 4. Hardcoded here
+  /// because it's a public, project-level constant — overridable via
+  /// VITE_COMMUNITY_POOL if we ever rotate it.
+  communityPoolAddress: `0x${string}`;
 }
 
 const GNOSIS: CirclesConfig = {
@@ -38,6 +44,9 @@ const GNOSIS: CirclesConfig = {
   kittyFactoryAddress: (import.meta.env.VITE_KITTY_FACTORY as `0x${string}` | undefined) ?? undefined,
   serviceRegistryAddress:
     (import.meta.env.VITE_SERVICE_REGISTRY as `0x${string}` | undefined) ?? undefined,
+  communityPoolAddress:
+    (import.meta.env.VITE_COMMUNITY_POOL as `0x${string}` | undefined) ??
+    '0x5A1773A01E403376c76B31dF63DF8D79dFDE8F11',
 };
 
 export const CIRCLES_CONFIG: CirclesConfig = GNOSIS;

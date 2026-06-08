@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Check, Clock, Star, Users } from 'lucide-react';
+import { Check, Clock, Sparkles, Star, Users } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { TrustButton } from '@/components/services/TrustButton';
@@ -78,6 +78,18 @@ export function ServiceCard({ service, hasViewer, onPay, onTrusted }: Props) {
                 <Star className="size-3 fill-current text-amber-500" />
                 {avg.toFixed(1)}
                 <span className="text-[var(--color-muted)]">({Number(service.ratingsCount)})</span>
+              </span>
+            )}
+            {service.poolShareBps > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 text-amber-700"
+                title="Provider contributes to the community prize pool"
+              >
+                <Sparkles className="size-3 fill-current text-amber-500" />
+                {(service.poolShareBps / 100).toFixed(
+                  service.poolShareBps % 100 === 0 ? 0 : 1,
+                )}
+                %
               </span>
             )}
             {service.timesPaid > 0n && (

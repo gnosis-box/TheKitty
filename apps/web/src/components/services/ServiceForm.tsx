@@ -1,11 +1,19 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { formatUnits, parseUnits } from 'viem';
+import { Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+
+/// Hard cap from `ServiceRegistry.MAX_POOL_SHARE_BPS` (2000 = 20%). Mirrored
+/// here so the slider can't propose a value the contract would revert on.
+const MAX_POOL_SHARE_BPS = 2000;
+/// Default `poolShareBps` when publishing a new service: a soft nudge,
+/// never coercive. Provider can drag the slider to 0% if they want.
+const DEFAULT_POOL_SHARE_BPS = 100; // 1%
 
 /// Initial values for prefill. When omitted the form starts blank (publish
 /// flow); when provided it acts as an edit form. Numeric fields are
@@ -17,6 +25,9 @@ export interface ServiceFormInitial {
   /// We format it to a display string internally.
   priceCrcRaw?: bigint;
   durationMins?: number;
+  /// Provider's existing community contribution in basis points.
+  /// Defaults to `DEFAULT_POOL_SHARE_BPS` on the publish flow.
+  poolShareBps?: number;
 }
 
 export interface ServiceFormValues {
@@ -25,6 +36,8 @@ export interface ServiceFormValues {
   /// Parsed back into raw `uint128` atto-CRC for the tx-builder.
   priceCrc: bigint;
   durationMins: number;
+  /// Basis points (0–MAX_POOL_SHARE_BPS) routed to the community pool.
+  poolShareBps: number;
 }
 
 interface Props {
@@ -58,6 +71,9 @@ export function ServiceForm({
   const [durationMins, setDurationMins] = useState(
     initial?.durationMins != null ? String(initial.durationMins) : '60',
   );
+  const [poolShareBps, setPoolShareBps] = useState<number>(
+    initial?.poolShareBps != null ? initial.poolShareBps : DEFAULT_POOL_SHARE_BPS,
+  );
 
   const validation = useMemo(
     () => validate({ title, description, priceCrc, durationMins }),
@@ -72,7 +88,15 @@ export function ServiceForm({
       description: description.trim(),
       priceCrc: validation.priceCrcRaw,
       durationMins: validation.durationMinsNum,
+      poolShareBps: Math.min(Math.max(poolShareBps, 0), MAX_POOL_SHARE_BPS),
     });
+  }
+
+  /// Pretty-print basis points as a percentage with one decimal when
+  /// needed (e.g. 100 → "1%", 150 → "1.5%", 2000 → "20%").
+  function bpsToPercent(bps: number): string {
+    const pct = bps / 100;
+    return Number.isInteger(pct) ? `${pct}%` : pct.toFixed(1) + '%';
   }
 
   return (
@@ -139,6 +163,43 @@ export function ServiceForm({
               required
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="size-4 text-amber-500" /> Community contribution
+          </CardTitle>
+          <CardDescription>
+            Share of every payment routed to the prize pool. Top contributors
+            get featured.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="poolShare">Pool share</Label>
+            <span className="font-mono text-sm">{bpsToPercent(poolShareBps)}</span>
+          </div>
+          <input
+            id="poolShare"
+            type="range"
+            min={0}
+            max={MAX_POOL_SHARE_BPS}
+            step={50}
+            value={poolShareBps}
+            onChange={(e) => setPoolShareBps(Number(e.target.value))}
+            className="mt-2 w-full accent-[var(--color-accent)]"
+          />
+          <div className="mt-1 flex justify-between text-[10px] text-[var(--color-muted)]">
+            <span>0%</span>
+            <span>20% max</span>
+          </div>
+          <p className="mt-2 text-xs text-[var(--color-muted)]">
+            On every {priceCrc || '0'} CRC paid, {bpsToPercent(poolShareBps)}{' '}
+            (~{((Number(priceCrc || '0') * poolShareBps) / 10000).toFixed(2)} CRC)
+            goes to the community pool.
+          </p>
         </CardContent>
       </Card>
 

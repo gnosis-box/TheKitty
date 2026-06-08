@@ -306,14 +306,16 @@ export function buildSmallSpendTx(args: {
 
 // ── ServiceRegistry transactions ──────────────────────────────────────────
 
-/// Build a `publish` tx for the singleton ServiceRegistry. Returns the new
-/// service id via the transaction return data; the front parses the
-/// ServicePublished event from the receipt to get the id.
+/// Build a `publish` tx for the singleton ServiceRegistry v2. Includes the
+/// provider's opt-in `poolShareBps` (0–2000) — the % of every payment they
+/// want routed to the community pool. The contract just records the
+/// declared share; the PaySheet computes and bundles the actual split.
 export function buildPublishServiceTx(args: {
   title: string;
   description: string;
   priceCrc: bigint;
   durationMins: number;
+  poolShareBps: number;
 }): MiniappTransaction {
   if (!CIRCLES_CONFIG.serviceRegistryAddress) {
     throw new Error('ServiceRegistry address not configured (VITE_SERVICE_REGISTRY).');
@@ -323,19 +325,22 @@ export function buildPublishServiceTx(args: {
     data: encodeFunctionData({
       abi: serviceRegistryAbi,
       functionName: 'publish',
-      args: [args.title, args.description, args.priceCrc, args.durationMins],
+      args: [args.title, args.description, args.priceCrc, args.durationMins, args.poolShareBps],
     }),
     value: '0',
   };
 }
 
-/// Build an `update` tx (provider-only on-chain).
+/// Build an `update` tx (provider-only on-chain). v2 includes the
+/// editable `poolShareBps` so providers can adjust their community
+/// contribution over time.
 export function buildUpdateServiceTx(args: {
   id: bigint;
   title: string;
   description: string;
   priceCrc: bigint;
   durationMins: number;
+  poolShareBps: number;
 }): MiniappTransaction {
   if (!CIRCLES_CONFIG.serviceRegistryAddress) {
     throw new Error('ServiceRegistry address not configured.');
@@ -345,7 +350,7 @@ export function buildUpdateServiceTx(args: {
     data: encodeFunctionData({
       abi: serviceRegistryAbi,
       functionName: 'update',
-      args: [args.id, args.title, args.description, args.priceCrc, args.durationMins],
+      args: [args.id, args.title, args.description, args.priceCrc, args.durationMins, args.poolShareBps],
     }),
     value: '0',
   };

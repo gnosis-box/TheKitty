@@ -179,6 +179,7 @@ export default function ServicesEditRoute() {
           description: service.description,
           priceCrcRaw: service.priceCrc,
           durationMins: service.durationMins,
+          poolShareBps: service.poolShareBps,
         }}
         submitLabel="Save changes"
         submitting={submitting}
