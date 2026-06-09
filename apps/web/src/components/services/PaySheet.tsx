@@ -6,8 +6,11 @@ import { Check, ShieldCheck, Star, Vote, Wallet, X } from 'lucide-react';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Textarea } from '@/components/ui/textarea';
 import { useWallet } from '@/hooks/use-wallet';
+import type { MiniappTransaction } from '@/components/wallet/WalletProvider';
 import {
+  buildEnterPoolWeekTx,
   buildLogPaymentTx,
+  buildMarkPaidTx,
   buildProposeTx,
   buildRateServiceTx,
   buildSmallSpendTx,
@@ -18,6 +21,7 @@ import {
   type GroupPotPaySource,
 } from '@/lib/kitty-pay-sources';
 import { readPersonalCrcBalance } from '@/lib/kitty-reader';
+import { readPoolPayPrep, type PoolPayPrep } from '@/lib/reward-pool-reader';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import { formatCrc, shortAddress } from '@/lib/utils';
 import type { ServiceView } from '@/lib/services-reader';
@@ -59,6 +63,7 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
   const [source, setSource] = useState<Source>({ type: 'wallet' });
   const [groupPotSources, setGroupPotSources] = useState<GroupPotPaySource[]>([]);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
+  const [poolPayPrep, setPoolPayPrep] = useState<PoolPayPrep | null>(null);
   const [memo, setMemo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [proposingFor, setProposingFor] = useState<Address | null>(null);
@@ -107,30 +112,38 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
     if (!open || !viewer) {
       setGroupPotSources([]);
       setWalletBalance(null);
+      setPoolPayPrep(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const [list, bal] = await Promise.all([
+        // The pool-pay prep is only fetched when the service actually has
+        // an opt-in share — otherwise the bundle skips the whole pool
+        // route and we save a couple of RPC calls.
+        const wantPoolPrep = (service.poolShareBps ?? 0) > 0;
+        const [list, bal, prep] = await Promise.all([
           readGroupPotPaySources(viewer, service.provider, service.priceCrc),
           readPersonalCrcBalance(viewer),
+          wantPoolPrep ? readPoolPayPrep(viewer) : Promise.resolve(null),
         ]);
         if (!cancelled) {
           setGroupPotSources(list);
           setWalletBalance(bal);
+          setPoolPayPrep(prep);
         }
       } catch {
         if (!cancelled) {
           setGroupPotSources([]);
           setWalletBalance(null);
+          setPoolPayPrep(null);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, viewer, service.provider, service.priceCrc]);
+  }, [open, viewer, service.provider, service.priceCrc, service.poolShareBps]);
 
   const walletInsufficient =
     walletBalance !== null && walletBalance < service.priceCrc;
@@ -171,7 +184,7 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
         memo: memo.trim(),
       });
 
-      let bundle;
+      let bundle: MiniappTransaction[];
       if (source.type === 'groupPot') {
         // Group-pot smallSpend: the kitty sends pot tokens directly to the
         // provider. No Hub.trust step from the buyer is useful here — the
@@ -185,16 +198,44 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
         });
         bundle = [smallSpendTx, logTx];
       } else {
-        // Wallet: typed Hub V2 wrappers from sdk-core. Personal CRC token
-        // id == uint256(uint160(viewer)). When the provider has opted in
-        // to a community share, we slice off the cut and send it to the
-        // pool address in the same bundle — still one buyer signature.
+        // Wallet route. The provider always gets `providerCut` in
+        // personal CRC. When the service has opted in to a community
+        // share (`poolShareBps > 0`), we route the pool cut through the
+        // on-chain `RewardPool` (Republish 5):
+        //
+        //   1. trust pool (one-shot, lets the viewer receive winnings)
+        //   2. safeTransferFrom buyer → provider, perso CRC, providerCut
+        //   3. markPaid() — required BEFORE groupMint so OpenMintPolicy
+        //      `hasPaid` gate passes
+        //   4. logPayment — registry stats
+        //   5. groupMint(pool, [buyer], [poolCut], "") — mints pool token
+        //      to the buyer against `poolCut` of their perso CRC
+        //   6. safeTransferFrom buyer → pool, poolTokenId, poolCut —
+        //      pool receives via Hub V2 self-trust (`to == tokenAvatar`)
+        //   7. enterWeek() — registers viewer in this week's draw
+        //
+        // For services with no pool share, the bundle is the classic
+        // V1 shape — single Hub.safeTransferFrom + logPayment.
         const core = circlesSdk.core;
         const tokenId = BigInt(viewer);
-        const reqs = [
-          ...(trusted
-            ? []
-            : [core.hubV2.trust(service.provider, TRUST_EXPIRY_NEVER)]),
+        const reqs: { to: string; data: string; value?: bigint | null }[] = [];
+
+        if (!trusted) {
+          reqs.push(core.hubV2.trust(service.provider, TRUST_EXPIRY_NEVER));
+        }
+
+        if (hasPoolCut && CIRCLES_CONFIG.rewardPoolAddress && poolPayPrep) {
+          if (poolPayPrep.needsPoolTrust) {
+            reqs.push(
+              core.hubV2.trust(
+                CIRCLES_CONFIG.rewardPoolAddress,
+                TRUST_EXPIRY_NEVER,
+              ),
+            );
+          }
+        }
+
+        reqs.push(
           core.hubV2.safeTransferFrom(
             viewer,
             service.provider,
@@ -202,26 +243,50 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
             providerCut,
             '0x',
           ),
-          ...(hasPoolCut
-            ? [
-                core.hubV2.safeTransferFrom(
-                  viewer,
-                  CIRCLES_CONFIG.communityPoolAddress,
-                  tokenId,
-                  poolCut,
-                  '0x',
-                ),
-              ]
-            : []),
-        ];
-        bundle = [
-          ...reqs.map((r) => ({
-            to: r.to,
-            data: r.data,
-            value: r.value == null ? '0' : r.value.toString(),
-          })),
-          logTx,
-        ];
+        );
+
+        const txs: MiniappTransaction[] = reqs.map((r) => ({
+          to: r.to,
+          data: r.data,
+          value: r.value == null ? '0' : r.value.toString(),
+        }));
+
+        if (hasPoolCut && CIRCLES_CONFIG.rewardPoolAddress && poolPayPrep) {
+          // markPaid before groupMint (policy gate); logPayment can go
+          // either side, we put it AFTER markPaid + BEFORE the mint so
+          // a host-side simulation sees the registry update first.
+          txs.push(buildMarkPaidTx());
+          txs.push(logTx);
+          const mintReq = core.hubV2.groupMint(
+            CIRCLES_CONFIG.rewardPoolAddress,
+            [viewer],
+            [poolCut],
+            '0x',
+          );
+          txs.push({
+            to: mintReq.to,
+            data: mintReq.data,
+            value: mintReq.value == null ? '0' : mintReq.value.toString(),
+          });
+          const xferReq = core.hubV2.safeTransferFrom(
+            viewer,
+            CIRCLES_CONFIG.rewardPoolAddress,
+            poolPayPrep.poolTokenId,
+            poolCut,
+            '0x',
+          );
+          txs.push({
+            to: xferReq.to,
+            data: xferReq.data,
+            value: xferReq.value == null ? '0' : xferReq.value.toString(),
+          });
+          txs.push(buildEnterPoolWeekTx());
+        } else {
+          // No pool route — classic V1 shape.
+          txs.push(logTx);
+        }
+
+        bundle = txs;
       }
 
       const hashes = await sendTransactions(bundle);

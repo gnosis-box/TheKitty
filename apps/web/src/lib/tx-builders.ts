@@ -10,6 +10,8 @@ import { CIRCLES_CONFIG } from './circles-config';
 import { kittyFactoryAbi } from './abi/kitty-factory';
 import { kittyGovernanceAbi } from './abi/kitty-governance';
 import { serviceRegistryAbi } from './abi/service-registry';
+import { buyerActivityAbi } from './abi/buyer-activity';
+import { rewardPoolAbi } from './abi/reward-pool';
 
 // uint96 max = 2**96 - 1 → "trust never expires" sentinel used by Circles V2.
 export const TRUST_EXPIRY_NEVER: bigint = (1n << 96n) - 1n;
@@ -388,6 +390,86 @@ export function buildLogPaymentTx(args: {
       abi: serviceRegistryAbi,
       functionName: 'logPayment',
       args: [args.serviceId, args.amount, args.memo],
+    }),
+    value: '0',
+  };
+}
+
+// ── Rewards pool transactions (Republish 5) ──────────────────────────────
+
+/// Build a `BuyerActivity.markPaid()` tx. Idempotent — calling more than
+/// once is a no-op (firstPaidAt is sticky after the first set). Bundled
+/// BEFORE `Hub.groupMint` in the pool route so the OpenMintPolicy's
+/// `hasPaid` gate is satisfied by the time the mint reaches the Hub.
+export function buildMarkPaidTx(): MiniappTransaction {
+  if (!CIRCLES_CONFIG.buyerActivityAddress) {
+    throw new Error('BuyerActivity address not configured (VITE_BUYER_ACTIVITY).');
+  }
+  return {
+    to: CIRCLES_CONFIG.buyerActivityAddress,
+    data: encodeFunctionData({
+      abi: buyerActivityAbi,
+      functionName: 'markPaid',
+      args: [],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `RewardPool.enterWeek()` tx. Registers the buyer as eligible
+/// for the current week's draw. Idempotent within a week (re-entering is
+/// a no-op). Bundled at the end of the pool route, AFTER `groupMint` and
+/// the pool token transfer, so the buyer is on the books for the prize
+/// they just helped fund.
+export function buildEnterPoolWeekTx(): MiniappTransaction {
+  if (!CIRCLES_CONFIG.rewardPoolAddress) {
+    throw new Error('RewardPool address not configured (VITE_REWARD_POOL).');
+  }
+  return {
+    to: CIRCLES_CONFIG.rewardPoolAddress,
+    data: encodeFunctionData({
+      abi: rewardPoolAbi,
+      functionName: 'enterWeek',
+      args: [],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `RewardPool.claim(weekIndex)` tx. The winner of a past week's
+/// draw calls this to receive their snapshotted prize (group tokens of
+/// the pool). They must have trusted the pool group prior to receiving
+/// (auto-bundled the first time they pay a pool-share service via the
+/// PaySheet pool route).
+export function buildClaimPrizeTx(args: { weekIndex: bigint }): MiniappTransaction {
+  if (!CIRCLES_CONFIG.rewardPoolAddress) {
+    throw new Error('RewardPool address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.rewardPoolAddress,
+    data: encodeFunctionData({
+      abi: rewardPoolAbi,
+      functionName: 'claim',
+      args: [args.weekIndex],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `RewardPool.drawWeekly(weekIndex)` tx. Anyone can call after
+/// the target week has fully closed (`weekIndex < currentWeek()`). Picks
+/// a random eligible buyer via `block.prevrandao` and snapshots the
+/// pool's current group-token balance as the prize.
+export function buildDrawWeeklyTx(args: { weekIndex: bigint }): MiniappTransaction {
+  if (!CIRCLES_CONFIG.rewardPoolAddress) {
+    throw new Error('RewardPool address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.rewardPoolAddress,
+    data: encodeFunctionData({
+      abi: rewardPoolAbi,
+      functionName: 'drawWeekly',
+      args: [args.weekIndex],
     }),
     value: '0',
   };
