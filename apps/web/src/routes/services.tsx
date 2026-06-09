@@ -14,6 +14,7 @@ import { MainTabs } from '@/components/MainTabs';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { OpenInPlayground } from '@/components/OpenInPlayground';
 import { PaySheet } from '@/components/services/PaySheet';
+import { PoolEligibilityBanner } from '@/components/PoolEligibilityBanner';
 import { ServiceCard } from '@/components/services/ServiceCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
@@ -186,6 +187,8 @@ export default function ServicesRoute() {
       </header>
 
       <MainTabs />
+
+      <PoolEligibilityBanner />
 
       <InviterBanner selfAddress={address} />
 

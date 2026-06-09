@@ -421,6 +421,26 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
 
         {stage === 'rate' ? (
           <section className="mt-6 flex flex-col items-center gap-4">
+            {hasPoolCut && (
+              <div className="w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-center">
+                <p className="text-xs font-medium text-emerald-900">
+                  🎟 You're in this week's pool draw
+                </p>
+                <p className="mt-0.5 text-[10px] text-[var(--color-muted)]">
+                  Sunday 18:00 UTC · check{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      navigate('/pool');
+                    }}
+                    className="font-medium text-emerald-900 hover:underline"
+                  >
+                    your status on /pool
+                  </button>
+                </p>
+              </div>
+            )}
             <p className="text-sm text-[var(--color-muted)]">
               Rate this service so others know it's good.
             </p>
