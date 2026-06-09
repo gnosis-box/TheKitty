@@ -10,6 +10,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import {
   ChartBar,
+  Crown,
   ExternalLink,
   Info,
   Settings,
@@ -67,6 +68,7 @@ interface NavLink {
 const NAV_LINKS: NavLink[] = [
   { to: '/services', label: 'Services', icon: <Store className="size-4" /> },
   { to: '/services/mine', label: 'My services', icon: <Settings className="size-4" /> },
+  { to: '/pool', label: 'Weekly pool', icon: <Crown className="size-4" /> },
   { to: '/funding', label: 'Funding', icon: <Wallet className="size-4" /> },
   { to: '/stats', label: 'Stats', icon: <ChartBar className="size-4" /> },
   { to: '/about', label: 'About', icon: <Info className="size-4" /> },

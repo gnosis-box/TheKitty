@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { toast } from 'sonner';
 import {
   Activity,
   Coins,
   Crown,
   ExternalLink,
-  Gift,
   HandCoins,
   RotateCw as RotateIcon,
   Store,
@@ -18,7 +16,6 @@ import { BurgerButton } from '@/components/BurgerButton';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useWallet } from '@/hooks/use-wallet';
 import { CIRCLES_CONFIG } from '@/lib/circles-config';
 import {
   readGlobalStats,
@@ -30,15 +27,8 @@ import {
   readTopProvidersByActivity,
   type ProviderActivity,
 } from '@/lib/services-reader';
-import {
-  readPoolState,
-  readViewerWins,
-  type PoolState,
-  type ViewerWin,
-} from '@/lib/reward-pool-reader';
-import { buildClaimPrizeTx } from '@/lib/tx-builders';
+import { readPoolState, type PoolState } from '@/lib/reward-pool-reader';
 import { formatCrc, shortAddress } from '@/lib/utils';
-import type { Address } from '@/types/kitty';
 
 export default function StatsRoute() {
   const [stats, setStats] = useState<GlobalStats | null>(null);
@@ -90,9 +80,7 @@ export default function StatsRoute() {
         </div>
       </header>
 
-      <PrizePoolCard />
-
-      <ClaimableWinningsCard />
+      <PoolTeaser />
 
       <Card>
         <CardHeader>
@@ -337,20 +325,14 @@ export default function StatsRoute() {
   );
 }
 
-/// `/stats` headline — the weekly prize pool. Now wired to the on-chain
-/// `RewardPool` (Republish 5): live pool balance, this week's entries,
-/// previous week's winner with an inline claim status, and a link to the
-/// pool's address on gnosisscan. The countdown to Sunday 18:00 UTC keeps
-/// the visual "you can still get in" rhythm for buyers.
-function PrizePoolCard() {
-  const [now, setNow] = useState(() => Date.now());
+/// Slim teaser at the top of `/stats` that links to the dedicated
+/// `/pool` route. Reads the same live pool state (so the headline is
+/// fresh) but keeps the stats page focused on the *services + funding*
+/// catalogue — pool deep-dive (entries list, past draws, claim flow)
+/// lives on its own page.
+function PoolTeaser() {
   const [pool, setPool] = useState<PoolState | null>(null);
-  const [poolLoading, setPoolLoading] = useState(true);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -361,7 +343,7 @@ function PrizePoolCard() {
       } catch {
         if (!cancelled) setPool(null);
       } finally {
-        if (!cancelled) setPoolLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
     return () => {
@@ -369,218 +351,36 @@ function PrizePoolCard() {
     };
   }, []);
 
-  const nextDrawMs = useMemo(() => nextSundayEveningUtc(now), [now]);
-  const remainingMs = Math.max(0, nextDrawMs - now);
-  const poolAddress = pool?.poolAddress ?? CIRCLES_CONFIG.rewardPoolAddress;
-  const balanceLabel = pool ? `${formatCrc(pool.balance)} TKP` : '—';
-  const entriesLabel = pool ? pool.currentWeekEntries.toString() : '—';
-
   return (
-    <Card className="border-amber-500/40 bg-amber-500/5">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Crown className="size-4 text-amber-500" /> This week's prize pool
-        </CardTitle>
-        <CardDescription>
-          Funded by every service's opt-in community share. One eligible buyer
-          wins the pot every Sunday at 18:00 UTC. Draws are settled
-          trustlessly on-chain by{' '}
-          <code className="font-mono text-[10px]">RewardPool</code>.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <Stat
-            icon={<Coins className="size-3.5" />}
-            label="Pool balance"
-            value={poolLoading ? '…' : balanceLabel}
-            hint="Live on-chain"
-          />
-          <Stat
-            icon={<Users className="size-3.5" />}
-            label="In this week"
-            value={poolLoading ? '…' : entriesLabel}
-            hint="Eligible buyers"
-          />
-          <Stat
-            icon={<RotateIcon className="size-3.5" />}
-            label="Next draw in"
-            value={formatRemaining(remainingMs)}
-            hint="Sun · 18:00 UTC"
-          />
-          <Stat
-            icon={<Trophy className="size-3.5" />}
-            label="Last week"
-            value={
-              pool?.previousWeekWinner
-                ? shortAddress(pool.previousWeekWinner)
-                : pool && pool.previousWeekEntries > 0n
-                  ? 'Pending draw'
-                  : '—'
-            }
-            hint={
-              pool?.previousWeekWinner
-                ? pool.previousWeekClaimed
-                  ? `${formatCrc(pool.previousWeekPrize)} · claimed`
-                  : `${formatCrc(pool.previousWeekPrize)} TKP · unclaimed`
-                : 'Winner shows here Sunday'
-            }
-          />
+    <Link
+      to="/pool"
+      className="group block rounded-2xl border border-amber-500/40 bg-amber-500/5 p-4 transition hover:bg-amber-500/10"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-700">
+            <Crown className="size-3" /> This week's pool
+          </p>
+          <p className="mt-1 font-mono text-2xl font-semibold tabular-nums leading-none">
+            {loading ? '—' : formatCrc(pool?.balance ?? 0n)}
+            <span className="ml-1 text-sm font-normal text-[var(--color-muted)]">
+              TKP
+            </span>
+          </p>
+          <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+            {loading
+              ? 'Loading…'
+              : `${pool?.currentWeekEntries.toString() ?? '0'} eligible buyer${pool?.currentWeekEntries === 1n ? '' : 's'} this week`}
+          </p>
         </div>
-        {poolAddress && (
-          <a
-            href={`https://gnosisscan.io/address/${poolAddress}`}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-900 hover:underline"
-          >
-            <ExternalLink className="size-3" /> View RewardPool contract on
-            gnosisscan
-          </a>
-        )}
-        <p className="mt-2 text-[11px] text-[var(--color-muted)]">
-          Eligible = any human who paid at least one service via the Kitty
-          this week. The pool token is{' '}
-          <code className="font-mono">TKP</code> (TheKittyPool group
-          avatar). Winners redeem TKP into the underlying CRC via the
-          group's policy at any time.
-        </p>
-      </CardContent>
-    </Card>
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-medium text-white shadow group-hover:bg-amber-600">
+          Open pool <Crown className="size-3" />
+        </span>
+      </div>
+    </Link>
   );
 }
 
-/// Self-hiding card that renders only when the connected viewer has at
-/// least one unclaimed prize from a past draw. Each row carries a
-/// "Claim" CTA that bundles a single `RewardPool.claim(weekIndex)` tx.
-/// The viewer's wallet already trusts the pool group (set up the first
-/// time they paid a pool-share service via the PaySheet pool route), so
-/// the claim transfer goes through without an extra trust step.
-function ClaimableWinningsCard() {
-  const { address, isConnected, sendTransactions } = useWallet();
-  const viewer = address as Address | null;
-  const [wins, setWins] = useState<ViewerWin[] | null>(null);
-  const [claimingWeek, setClaimingWeek] = useState<bigint | null>(null);
-
-  useEffect(() => {
-    if (!viewer) {
-      setWins([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await readViewerWins(viewer);
-        if (!cancelled) setWins(list);
-      } catch {
-        if (!cancelled) setWins([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [viewer]);
-
-  if (!isConnected || !wins) return null;
-  const unclaimed = wins.filter((w) => !w.claimed);
-  const totalUnclaimed = unclaimed.reduce((acc, w) => acc + w.prize, 0n);
-  if (unclaimed.length === 0) return null;
-
-  async function claim(weekIndex: bigint) {
-    setClaimingWeek(weekIndex);
-    try {
-      toast.loading('Claiming prize…', { id: 'claim-prize' });
-      const tx = buildClaimPrizeTx({ weekIndex });
-      const [hash] = await sendTransactions([tx]);
-      if (!hash) throw new Error('Host returned no tx hash');
-      toast.success('Prize claimed', { id: 'claim-prize' });
-      if (viewer) {
-        const fresh = await readViewerWins(viewer);
-        setWins(fresh);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Claim failed', {
-        id: 'claim-prize',
-      });
-    } finally {
-      setClaimingWeek(null);
-    }
-  }
-
-  return (
-    <Card className="border-emerald-500/40 bg-emerald-500/5">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Gift className="size-4 text-emerald-600" /> You have unclaimed
-          winnings
-        </CardTitle>
-        <CardDescription>
-          {unclaimed.length === 1
-            ? `You won a past draw and haven't claimed yet — ${formatCrc(totalUnclaimed)} TKP waiting.`
-            : `You won ${unclaimed.length} past draws — ${formatCrc(totalUnclaimed)} TKP total, all unclaimed.`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ul className="flex flex-col gap-2">
-          {unclaimed.map((w) => (
-            <li
-              key={w.weekIndex.toString()}
-              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-[var(--color-surface)] px-3 py-2"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  Week #{w.weekIndex.toString()}
-                </p>
-                <p className="font-mono text-[11px] text-[var(--color-muted)]">
-                  {formatCrc(w.prize)} TKP
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void claim(w.weekIndex)}
-                disabled={claimingWeek !== null}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-medium text-white shadow hover:bg-emerald-700 disabled:opacity-50"
-              >
-                <Gift className="size-3.5" />
-                {claimingWeek === w.weekIndex ? 'Claiming…' : 'Claim'}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3 text-[11px] text-[var(--color-muted)]">
-          You receive TKP (the pool's group token). Hold it for future
-          redraws, or burn it later via the pool's redemption policy to
-          get a basket of the contributing buyers' CRC back.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-/// Returns the unix-ms timestamp of the next Sunday at 18:00 UTC after
-/// `nowMs`. Used for the draw countdown.
-function nextSundayEveningUtc(nowMs: number): number {
-  const d = new Date(nowMs);
-  const dayUtc = d.getUTCDay(); // 0 = Sunday
-  const hUtc = d.getUTCHours();
-  // Days to advance to reach the next Sunday 18h UTC.
-  let daysToAdd = (7 - dayUtc) % 7;
-  if (daysToAdd === 0 && hUtc >= 18) daysToAdd = 7;
-  const target = new Date(d);
-  target.setUTCDate(d.getUTCDate() + daysToAdd);
-  target.setUTCHours(18, 0, 0, 0);
-  return target.getTime();
-}
-
-function formatRemaining(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const days = Math.floor(totalSec / 86400);
-  const hours = Math.floor((totalSec % 86400) / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
-}
 
 interface StatProps {
   icon: ReactNode;

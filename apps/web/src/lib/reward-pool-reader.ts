@@ -203,11 +203,75 @@ export async function readViewerWins(viewer: Address): Promise<ViewerWin[]> {
   }));
 }
 
+/// Read the eligible buyers for a given week (the address[] underlying
+/// the on-chain `weeklyEntries` mapping). Used by the `/pool` route to
+/// stack the avatars of "who's in this week's draw" so contributors can
+/// see they're queued up next to people they trust.
+export async function readWeekEntries(weekIndex: bigint): Promise<Address[]> {
+  const pool = CIRCLES_CONFIG.rewardPoolAddress;
+  if (!pool) return [];
+  const client = getPublicClient();
+  const list = (await client.readContract({
+    address: pool,
+    abi: rewardPoolAbi,
+    functionName: 'entries',
+    args: [weekIndex],
+  })) as readonly Address[];
+  return [...list];
+}
+
+/// Past draw entry — one row per past winner. Used by `/pool` to show
+/// the "Past draws" rail.
+export interface PastDraw {
+  weekIndex: bigint;
+  winner: Address;
+  prize: bigint;
+  claimed: boolean;
+  blockNumber: bigint;
+}
+
+/// Walk every `WinnerDrawn` event since the pool's deploy and resolve each
+/// one's claim state. Single `getLogs` call + a parallel batch of
+/// `claimed(weekIndex)` reads. Returns newest-first.
+export async function readPastDraws(): Promise<PastDraw[]> {
+  const pool = CIRCLES_CONFIG.rewardPoolAddress;
+  if (!pool) return [];
+  const client = getPublicClient();
+
+  const logs = await client.getLogs({
+    address: pool,
+    event: WINNER_DRAWN_EVENT,
+    fromBlock: 'earliest',
+    toBlock: 'latest',
+  });
+
+  if (logs.length === 0) return [];
+
+  const claims = await Promise.all(
+    logs.map((log) =>
+      client.readContract({
+        address: pool,
+        abi: rewardPoolAbi,
+        functionName: 'claimed',
+        args: [log.args.weekIndex as bigint],
+      }) as Promise<boolean>,
+    ),
+  );
+
+  return logs
+    .map((log, i) => ({
+      weekIndex: log.args.weekIndex as bigint,
+      winner: log.args.winner as Address,
+      prize: log.args.prize as bigint,
+      claimed: claims[i] ?? false,
+      blockNumber: log.blockNumber,
+    }))
+    .sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : b.blockNumber < a.blockNumber ? -1 : 0));
+}
+
 /// Whether the viewer is in the current week's entries already. Used by
-/// the PaySheet UI to show "🎟 Entered this week's draw" once the pool
-/// route has run, and to avoid re-running `enterWeek()` if the viewer is
-/// paying a second service in the same week (it's a no-op on-chain but
-/// the host bundle UX is cleaner without it).
+/// the `/pool` route to render the "🎟 You're in this week" badge and to
+/// hide the "Pay any service to enter" CTA when redundant.
 export async function readViewerInThisWeek(viewer: Address): Promise<boolean> {
   const pool = CIRCLES_CONFIG.rewardPoolAddress;
   if (!pool) return false;
