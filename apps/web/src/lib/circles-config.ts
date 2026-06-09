@@ -60,7 +60,8 @@ const GNOSIS: CirclesConfig = {
   liftERC20Address: '0x5F99a795dD2743C36D63511f0D4bc667e6d3cDB5',
   kittyFactoryAddress: (import.meta.env.VITE_KITTY_FACTORY as `0x${string}` | undefined) ?? undefined,
   serviceRegistryAddress:
-    (import.meta.env.VITE_SERVICE_REGISTRY as `0x${string}` | undefined) ?? undefined,
+    (import.meta.env.VITE_SERVICE_REGISTRY as `0x${string}` | undefined) ??
+    '0x295Fe49F2b00dd3aF05Bc245b2dFADbEB9c3F35f',
   communityPoolAddress:
     (import.meta.env.VITE_COMMUNITY_POOL as `0x${string}` | undefined) ??
     '0x5A1773A01E403376c76B31dF63DF8D79dFDE8F11',
