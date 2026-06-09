@@ -97,14 +97,20 @@ contract ServiceRegistryTest is Test {
 
     function test_publish_acceptsMaxBps() public {
         vm.prank(alice);
-        uint64 id = reg.publish("A", "", 1, 0, 2000); // 20%
+        uint64 id = reg.publish("A", "", 1, 0, 10000); // 100% (pure fundraiser)
+        assertEq(reg.getService(id).poolShareBps, 10000);
+    }
+
+    function test_publish_acceptsMidBps() public {
+        vm.prank(alice);
+        uint64 id = reg.publish("A", "", 1, 0, 2000); // 20% (the legacy v2 cap, now mid-range)
         assertEq(reg.getService(id).poolShareBps, 2000);
     }
 
     function test_publish_tooHighBpsReverts() public {
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
-        reg.publish("A", "", 1, 0, 2001); // 20.01%
+        reg.publish("A", "", 1, 0, 10001); // 100.01%
     }
 
     // ── update ──────────────────────────────────────────────────────────────
@@ -151,7 +157,7 @@ contract ServiceRegistryTest is Test {
         uint64 id = reg.publish("A", "", 1, 0, 0);
         vm.prank(alice);
         vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
-        reg.update(id, "A", "", 1, 0, 2001);
+        reg.update(id, "A", "", 1, 0, 10001);
     }
 
     // ── deactivate ──────────────────────────────────────────────────────────
@@ -300,7 +306,7 @@ contract ServiceRegistryTest is Test {
         assertEq(reg.MAX_TITLE_LEN(), 64);
         assertEq(reg.MAX_DESCRIPTION_LEN(), 256);
         assertEq(reg.MAX_MEMO_LEN(), 256);
-        assertEq(reg.MAX_POOL_SHARE_BPS(), 2000);
+        assertEq(reg.MAX_POOL_SHARE_BPS(), 10000);
     }
 
     // ── fuzz ────────────────────────────────────────────────────────────────
@@ -323,7 +329,7 @@ contract ServiceRegistryTest is Test {
     /// @dev Pool share is bounded by MAX_POOL_SHARE_BPS at publish time.
     function testFuzz_publish_poolShareBpsBounded(uint16 bps) public {
         vm.prank(alice);
-        if (bps > 2000) {
+        if (bps > 10000) {
             vm.expectRevert(ServiceRegistry.PoolShareTooHigh.selector);
             reg.publish("A", "", 1, 0, bps);
         } else {

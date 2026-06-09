@@ -31,11 +31,14 @@ contract ServiceRegistry {
     uint256 public constant MAX_TITLE_LEN = 64;
     uint256 public constant MAX_DESCRIPTION_LEN = 256;
     uint256 public constant MAX_MEMO_LEN = 256;
-    /// @notice Hard cap on the opt-in community pool share. 2000 = 20%.
-    ///         Set conservatively so a provider can't accidentally
-    ///         turn a paid service into a near-100% donation; if real
-    ///         usage shows the cap is too low we'll bump it in v3.
-    uint16 public constant MAX_POOL_SHARE_BPS = 2000;
+    /// @notice Hard cap on the opt-in community pool share. 10000 = 100%
+    ///         (v3 bump from v2's 2000 = 20%). A provider can now run a
+    ///         pure-fundraiser service that routes the whole payment to
+    ///         the community pool. The 100% case is signposted in the
+    ///         publish UI ("⚠️ you keep 0 CRC") so providers don't trip
+    ///         into it accidentally — the contract itself just enforces
+    ///         the protocol-level ceiling.
+    uint16 public constant MAX_POOL_SHARE_BPS = 10000;
 
     struct Service {
         uint64 id;

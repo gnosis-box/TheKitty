@@ -8,12 +8,18 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-/// Hard cap from `ServiceRegistry.MAX_POOL_SHARE_BPS` (2000 = 20%). Mirrored
-/// here so the slider can't propose a value the contract would revert on.
-const MAX_POOL_SHARE_BPS = 2000;
+/// Hard cap from `ServiceRegistry.MAX_POOL_SHARE_BPS` (10000 = 100%).
+/// Mirrored here so the slider can't propose a value the contract would
+/// revert on. At 100% the provider runs a pure-fundraiser service that
+/// donates the whole payment to the community pool — UI flags that
+/// explicitly above 50%.
+const MAX_POOL_SHARE_BPS = 10000;
 /// Default `poolShareBps` when publishing a new service: a soft nudge,
 /// never coercive. Provider can drag the slider to 0% if they want.
 const DEFAULT_POOL_SHARE_BPS = 100; // 1%
+/// Above this bps we render a warning. Picked at 50% so the provider
+/// can't trip into "keep nothing" by accident.
+const HIGH_SHARE_WARNING_BPS = 5000;
 
 /// Initial values for prefill. When omitted the form starts blank (publish
 /// flow); when provided it acts as an edit form. Numeric fields are
@@ -186,20 +192,45 @@ export function ServiceForm({
             type="range"
             min={0}
             max={MAX_POOL_SHARE_BPS}
-            step={50}
+            step={100}
             value={poolShareBps}
             onChange={(e) => setPoolShareBps(Number(e.target.value))}
             className="mt-2 w-full accent-[var(--color-accent)]"
           />
           <div className="mt-1 flex justify-between text-[10px] text-[var(--color-muted)]">
             <span>0%</span>
-            <span>20% max</span>
+            <span>50%</span>
+            <span>100% (fundraiser)</span>
           </div>
           <p className="mt-2 text-xs text-[var(--color-muted)]">
-            On every {priceCrc || '0'} CRC paid, {bpsToPercent(poolShareBps)}{' '}
-            (~{((Number(priceCrc || '0') * poolShareBps) / 10000).toFixed(2)} CRC)
-            goes to the community pool.
+            On every {priceCrc || '0'} CRC paid,{' '}
+            <strong className="font-mono text-[var(--color-text)]">
+              {((Number(priceCrc || '0') * poolShareBps) / 10000).toFixed(2)} CRC
+            </strong>{' '}
+            ({bpsToPercent(poolShareBps)}) goes to the community pool. You keep{' '}
+            <strong className="font-mono text-[var(--color-text)]">
+              {(
+                Number(priceCrc || '0') -
+                (Number(priceCrc || '0') * poolShareBps) / 10000
+              ).toFixed(2)} CRC
+            </strong>{' '}
+            per sale.
           </p>
+          {poolShareBps >= HIGH_SHARE_WARNING_BPS && (
+            <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-900">
+              {poolShareBps === MAX_POOL_SHARE_BPS ? (
+                <>
+                  ⚠️ <strong>Fundraiser mode</strong>: you keep 0 CRC per sale.
+                  Every payment goes entirely to the community pool.
+                </>
+              ) : (
+                <>
+                  ⚠️ You're routing more than half of every payment to the pool.
+                  Make sure this is intentional before publishing.
+                </>
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
 

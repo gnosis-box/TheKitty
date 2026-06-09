@@ -236,15 +236,20 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
           }
         }
 
-        reqs.push(
-          core.hubV2.safeTransferFrom(
-            viewer,
-            service.provider,
-            tokenId,
-            providerCut,
-            '0x',
-          ),
-        );
+        // Skip the provider transfer when the provider chose a 100%
+        // pool share — there's nothing to send and the on-chain
+        // safeTransferFrom would just burn gas on a zero-amount move.
+        if (providerCut > 0n) {
+          reqs.push(
+            core.hubV2.safeTransferFrom(
+              viewer,
+              service.provider,
+              tokenId,
+              providerCut,
+              '0x',
+            ),
+          );
+        }
 
         const txs: MiniappTransaction[] = reqs.map((r) => ({
           to: r.to,

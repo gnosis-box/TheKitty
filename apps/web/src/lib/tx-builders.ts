@@ -309,7 +309,7 @@ export function buildSmallSpendTx(args: {
 // ── ServiceRegistry transactions ──────────────────────────────────────────
 
 /// Build a `publish` tx for the singleton ServiceRegistry v2. Includes the
-/// provider's opt-in `poolShareBps` (0–2000) — the % of every payment they
+/// provider's opt-in `poolShareBps` (0–10000) — the % of every payment they
 /// want routed to the community pool. The contract just records the
 /// declared share; the PaySheet computes and bundles the actual split.
 export function buildPublishServiceTx(args: {

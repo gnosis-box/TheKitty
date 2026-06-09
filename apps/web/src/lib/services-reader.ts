@@ -467,7 +467,7 @@ export interface ServiceView {
   active: boolean;
   createdAt: number;
   /// Provider's opt-in cut of every payment routed to the community
-  /// pool, in basis points (0–2000 = 0–20%). 0 = keeps everything,
+  /// pool, in basis points (0–10000 = 0–100%). 0 = keeps everything,
   /// 100 = 1% to the pool, etc. The split is computed and bundled by
   /// the PaySheet; the contract just records the declared share.
   poolShareBps: number;
