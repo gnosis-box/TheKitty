@@ -221,7 +221,15 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
         const tokenId = BigInt(viewer);
         const reqs: { to: string; data: string; value?: bigint | null }[] = [];
 
-        if (!trusted) {
+        // Self-payment edge case: when the buyer IS the provider (the
+        // dev/demo "test my own service" path), Hub V2 reverts on
+        // self-transfer of personal CRC and self-trust is a no-op. We
+        // skip both so the rest of the pool route still exercises the
+        // mint + draw flow end-to-end with one wallet.
+        const isSelfPayment =
+          viewer.toLowerCase() === service.provider.toLowerCase();
+
+        if (!trusted && !isSelfPayment) {
           reqs.push(core.hubV2.trust(service.provider, TRUST_EXPIRY_NEVER));
         }
 
@@ -236,10 +244,12 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
           }
         }
 
-        // Skip the provider transfer when the provider chose a 100%
-        // pool share — there's nothing to send and the on-chain
-        // safeTransferFrom would just burn gas on a zero-amount move.
-        if (providerCut > 0n) {
+        // Skip the provider transfer when:
+        //   - provider chose 100% pool share (providerCut == 0), or
+        //   - the buyer IS the provider (self-payment dev/demo path).
+        // Hub V2 reverts on self-ERC1155 transfer of personal CRC, and a
+        // zero-amount move would just burn gas for nothing.
+        if (providerCut > 0n && !isSelfPayment) {
           reqs.push(
             core.hubV2.safeTransferFrom(
               viewer,
