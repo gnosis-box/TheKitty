@@ -5,9 +5,11 @@ import "forge-std/Test.sol";
 import {RewardPool} from "../src/RewardPool.sol";
 
 /// @dev Mocks the slice of the V2 Hub the pool touches: balanceOf,
-///      safeTransferFrom (for claim), registerGroup (in constructor).
+///      safeTransferFrom (for claim), registerGroup (in constructor),
+///      isHuman (for provider draw eligibility).
 contract MockHubRP {
     mapping(address => mapping(uint256 => uint256)) public balances;
+    mapping(address => bool) public humans;
     address public lastRegisteredPolicy;
     string public lastRegisteredName;
     string public lastRegisteredSymbol;
@@ -16,6 +18,14 @@ contract MockHubRP {
 
     function setBalance(address account, uint256 id, uint256 amount) external {
         balances[account][id] = amount;
+    }
+
+    function setHuman(address a, bool v) external {
+        humans[a] = v;
+    }
+
+    function isHuman(address a) external view returns (bool) {
+        return humans[a];
     }
 
     function balanceOf(address account, uint256 id) external view returns (uint256) {
@@ -196,7 +206,10 @@ contract RewardPoolTest is Test {
         pool.drawWeekly(w);
 
         assertEq(pool.winners(w), bob);
+        // No provider entries → full pool to buyer.
         assertEq(pool.weeklyPrize(w), 1_000);
+        assertEq(pool.providerWinners(w), address(0));
+        assertEq(pool.providerWeeklyPrize(w), 0);
     }
 
     function test_drawWeekly_revertsBeforeWeekEnds() public {
@@ -290,6 +303,166 @@ contract RewardPoolTest is Test {
         vm.prank(alice);
         vm.expectRevert(RewardPool.AlreadyClaimed.selector);
         pool.claim(w);
+    }
+
+    // ── enterProviderWeek ──────────────────────────────────────────────────
+
+    function test_enterProviderWeek_revertsIfNotHuman() public {
+        vm.expectRevert(RewardPool.NotHuman.selector);
+        pool.enterProviderWeek(dave);
+    }
+
+    function test_enterProviderWeek_addsProvider() public {
+        hub.setHuman(dave, true);
+        pool.enterProviderWeek(dave);
+
+        uint256 w = pool.currentWeek();
+        assertEq(pool.providerEntriesCount(w), 1);
+        assertTrue(pool.providerInWeek(w, dave));
+    }
+
+    function test_enterProviderWeek_idempotent() public {
+        hub.setHuman(dave, true);
+        pool.enterProviderWeek(dave);
+        pool.enterProviderWeek(dave);
+
+        assertEq(pool.providerEntriesCount(pool.currentWeek()), 1);
+    }
+
+    function test_enterProviderWeek_separateWeeks() public {
+        hub.setHuman(dave, true);
+        pool.enterProviderWeek(dave);
+        uint256 w1 = pool.currentWeek();
+
+        vm.warp(block.timestamp + 7 days);
+        pool.enterProviderWeek(dave);
+        uint256 w2 = pool.currentWeek();
+
+        assertGt(w2, w1);
+        assertEq(pool.providerEntriesCount(w1), 1);
+        assertEq(pool.providerEntriesCount(w2), 1);
+    }
+
+    // ── two-sided draw ─────────────────────────────────────────────────────
+
+    function test_drawWeekly_twoSidedSplits80_20() public {
+        // Seed buyers + providers.
+        address[] memory buyers = new address[](2);
+        buyers[0] = alice;
+        buyers[1] = bob;
+        uint256 w = _seedWeek(buyers, 1_000);
+
+        hub.setHuman(charlie, true);
+        hub.setHuman(dave, true);
+        pool.enterProviderWeek(charlie);
+        pool.enterProviderWeek(dave);
+
+        vm.warp(block.timestamp + 7 days);
+        vm.prevrandao(bytes32(uint256(1))); // 1 % 2 = 1 → bob
+        pool.drawWeekly(w);
+
+        // 80% / 20% split.
+        assertEq(pool.winners(w), bob);
+        assertEq(pool.weeklyPrize(w), 800);
+
+        address provWinner = pool.providerWinners(w);
+        assertTrue(provWinner == charlie || provWinner == dave);
+        assertEq(pool.providerWeeklyPrize(w), 200);
+    }
+
+    function test_drawWeekly_noProviders_fullPoolToBuyer() public {
+        address[] memory buyers = new address[](1);
+        buyers[0] = alice;
+        uint256 w = _seedWeek(buyers, 1_000);
+
+        vm.warp(block.timestamp + 7 days);
+        pool.drawWeekly(w);
+
+        assertEq(pool.winners(w), alice);
+        assertEq(pool.weeklyPrize(w), 1_000); // full pool, no provider share carved out
+        assertEq(pool.providerWinners(w), address(0));
+        assertEq(pool.providerWeeklyPrize(w), 0);
+    }
+
+    function test_claimProvider_transfersPrize() public {
+        address[] memory buyers = new address[](1);
+        buyers[0] = alice;
+        uint256 w = _seedWeek(buyers, 500);
+
+        hub.setHuman(charlie, true);
+        pool.enterProviderWeek(charlie);
+
+        vm.warp(block.timestamp + 7 days);
+        pool.drawWeekly(w);
+
+        assertEq(pool.providerWinners(w), charlie);
+        assertEq(pool.providerWeeklyPrize(w), 100); // 20% of 500
+
+        vm.prank(charlie);
+        pool.claimProvider(w);
+
+        assertEq(hub.balanceOf(charlie, pool.selfTokenId()), 100);
+        assertTrue(pool.providerClaimed(w));
+    }
+
+    function test_claimProvider_revertsIfNotProviderWinner() public {
+        address[] memory buyers = new address[](1);
+        buyers[0] = alice;
+        uint256 w = _seedWeek(buyers, 200);
+
+        hub.setHuman(charlie, true);
+        pool.enterProviderWeek(charlie);
+
+        vm.warp(block.timestamp + 7 days);
+        pool.drawWeekly(w);
+
+        vm.prank(dave);
+        vm.expectRevert(RewardPool.NotProviderWinner.selector);
+        pool.claimProvider(w);
+    }
+
+    function test_claimProvider_revertsIfAlreadyClaimed() public {
+        address[] memory buyers = new address[](1);
+        buyers[0] = alice;
+        uint256 w = _seedWeek(buyers, 300);
+
+        hub.setHuman(charlie, true);
+        pool.enterProviderWeek(charlie);
+
+        vm.warp(block.timestamp + 7 days);
+        pool.drawWeekly(w);
+
+        vm.prank(charlie);
+        pool.claimProvider(w);
+
+        vm.prank(charlie);
+        vm.expectRevert(RewardPool.AlreadyClaimedProvider.selector);
+        pool.claimProvider(w);
+    }
+
+    function test_drawWeekly_buyerAndProviderClaim_independent() public {
+        // Both claims work independently against the same pool snapshot.
+        address[] memory buyers = new address[](1);
+        buyers[0] = alice;
+        uint256 w = _seedWeek(buyers, 1_000);
+
+        hub.setHuman(charlie, true);
+        pool.enterProviderWeek(charlie);
+
+        vm.warp(block.timestamp + 7 days);
+        pool.drawWeekly(w);
+
+        // Provider claims first.
+        vm.prank(charlie);
+        pool.claimProvider(w);
+        assertEq(hub.balanceOf(charlie, pool.selfTokenId()), 200);
+
+        // Buyer claims after.
+        vm.prank(alice);
+        pool.claim(w);
+        assertEq(hub.balanceOf(alice, pool.selfTokenId()), 800);
+
+        assertEq(hub.balanceOf(address(pool), pool.selfTokenId()), 0);
     }
 
     function test_claim_lateContributionsRollIntoNextWeek() public {

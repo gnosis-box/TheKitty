@@ -436,6 +436,45 @@ export function buildEnterPoolWeekTx(): MiniappTransaction {
   };
 }
 
+/// Build a `RewardPool.enterProviderWeek(provider)` tx. Bundled in the
+/// PaySheet pool route right after the buyer's `enterWeek()` call —
+/// when the buyer pays a service with a community share, the provider
+/// who got paid is auto-enrolled in the parallel provider draw for the
+/// current week.
+export function buildEnterProviderWeekTx(args: { provider: Address }): MiniappTransaction {
+  if (!CIRCLES_CONFIG.rewardPoolAddress) {
+    throw new Error('RewardPool address not configured (VITE_REWARD_POOL).');
+  }
+  return {
+    to: CIRCLES_CONFIG.rewardPoolAddress,
+    data: encodeFunctionData({
+      abi: rewardPoolAbi,
+      functionName: 'enterProviderWeek',
+      args: [args.provider],
+    }),
+    value: '0',
+  };
+}
+
+/// Build a `RewardPool.claimProvider(weekIndex)` tx. Mirrors `claim`
+/// but for the provider-side draw winner.
+export function buildClaimProviderPrizeTx(args: {
+  weekIndex: bigint;
+}): MiniappTransaction {
+  if (!CIRCLES_CONFIG.rewardPoolAddress) {
+    throw new Error('RewardPool address not configured.');
+  }
+  return {
+    to: CIRCLES_CONFIG.rewardPoolAddress,
+    data: encodeFunctionData({
+      abi: rewardPoolAbi,
+      functionName: 'claimProvider',
+      args: [args.weekIndex],
+    }),
+    value: '0',
+  };
+}
+
 /// Build a `RewardPool.claim(weekIndex)` tx. The winner of a past week's
 /// draw calls this to receive their snapshotted prize (group tokens of
 /// the pool). They must have trusted the pool group prior to receiving

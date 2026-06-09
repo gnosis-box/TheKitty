@@ -83,12 +83,79 @@ export const rewardPoolAbi = [
     inputs: [],
     outputs: [{ type: 'uint256' }],
   },
+  // ── provider draw views ──
+  {
+    type: 'function',
+    name: 'providerEntriesCount',
+    stateMutability: 'view',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'providerEntries',
+    stateMutability: 'view',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
+    outputs: [{ type: 'address[]' }],
+  },
+  {
+    type: 'function',
+    name: 'providerInWeek',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'weekIndex', type: 'uint256' },
+      { name: 'provider', type: 'address' },
+    ],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'providerWinners',
+    stateMutability: 'view',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    type: 'function',
+    name: 'providerWeeklyPrize',
+    stateMutability: 'view',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'providerClaimed',
+    stateMutability: 'view',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'PROVIDER_SHARE_BPS',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint16' }],
+  },
   // ── writes ──
   {
     type: 'function',
     name: 'enterWeek',
     stateMutability: 'nonpayable',
     inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'enterProviderWeek',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'provider', type: 'address' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'claimProvider',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'weekIndex', type: 'uint256' }],
     outputs: [],
   },
   {
@@ -117,6 +184,15 @@ export const rewardPoolAbi = [
   },
   {
     type: 'event',
+    name: 'ProviderWeekEntered',
+    inputs: [
+      { indexed: true, name: 'weekIndex', type: 'uint256' },
+      { indexed: true, name: 'provider', type: 'address' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'WinnerDrawn',
     inputs: [
       { indexed: true, name: 'weekIndex', type: 'uint256' },
@@ -127,7 +203,27 @@ export const rewardPoolAbi = [
   },
   {
     type: 'event',
+    name: 'ProviderWinnerDrawn',
+    inputs: [
+      { indexed: true, name: 'weekIndex', type: 'uint256' },
+      { indexed: true, name: 'winner', type: 'address' },
+      { indexed: false, name: 'prize', type: 'uint256' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
     name: 'Claimed',
+    inputs: [
+      { indexed: true, name: 'weekIndex', type: 'uint256' },
+      { indexed: true, name: 'winner', type: 'address' },
+      { indexed: false, name: 'prize', type: 'uint256' },
+    ],
+    anonymous: false,
+  },
+  {
+    type: 'event',
+    name: 'ProviderClaimed',
     inputs: [
       { indexed: true, name: 'weekIndex', type: 'uint256' },
       { indexed: true, name: 'winner', type: 'address' },

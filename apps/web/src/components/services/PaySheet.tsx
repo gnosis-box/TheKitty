@@ -9,6 +9,7 @@ import { useWallet } from '@/hooks/use-wallet';
 import type { MiniappTransaction } from '@/components/wallet/WalletProvider';
 import {
   buildEnterPoolWeekTx,
+  buildEnterProviderWeekTx,
   buildLogPaymentTx,
   buildMarkPaidTx,
   buildProposeTx,
@@ -281,6 +282,9 @@ export function PaySheet({ service, open, onClose, onPaid }: Props) {
             value: xferReq.value == null ? '0' : xferReq.value.toString(),
           });
           txs.push(buildEnterPoolWeekTx());
+          // Two-sided draw — the provider whose service got paid is also
+          // entered for the parallel provider draw this week.
+          txs.push(buildEnterProviderWeekTx({ provider: service.provider }));
         } else {
           // No pool route — classic V1 shape.
           txs.push(logTx);

@@ -18,6 +18,8 @@ interface IHubV2RP {
         string calldata symbol,
         bytes32 metadataDigest
     ) external;
+
+    function isHuman(address avatar) external view returns (bool);
 }
 
 interface IBuyerActivityRP {
@@ -67,29 +69,60 @@ contract RewardPool {
     ///         instant deterministically maps to the next week index.
     uint256 public constant WEEK = 7 days;
 
+    /// @notice Share of every week's pool reserved for the provider draw.
+    ///         Basis points (2000 = 20%). The complement (80%) goes to
+    ///         the buyer draw. Fixed at deploy time to keep the
+    ///         incentive maths reading on /pool predictable.
+    uint16 public constant PROVIDER_SHARE_BPS = 2000;
+
     /// @notice Eligible buyers entered into a given week's draw, in entry
     ///         order. Index = `weekIndex`.
     mapping(uint256 => address[]) public weeklyEntries;
     mapping(uint256 => mapping(address => bool)) public enteredWeek;
 
-    /// @notice Winner address per drawn week. address(0) = not yet drawn.
+    /// @notice Eligible providers (Circles V2 humans whose service was
+    ///         paid this week) for the parallel provider draw. Populated
+    ///         by `enterProviderWeek(provider)` which the PaySheet
+    ///         bundles right after the pool-route safeTransferFrom so
+    ///         every paid provider lands in the queue automatically.
+    mapping(uint256 => address[]) public weeklyProviders;
+    mapping(uint256 => mapping(address => bool)) public providerInWeek;
+
+    /// @notice Buyer winner per week. address(0) = not yet drawn.
     mapping(uint256 => address) public winners;
-    /// @notice Snapshotted prize amount (group token units) per drawn week.
+    /// @notice Buyer prize snapshot (group token units) per drawn week.
+    ///         When there are no provider entries this snapshot equals
+    ///         the full pool balance for that week; otherwise it's 80%.
     mapping(uint256 => uint256) public weeklyPrize;
-    /// @notice True once the winner has claimed the snapshotted prize.
+    /// @notice True once the buyer winner has claimed.
     mapping(uint256 => bool) public claimed;
+
+    /// @notice Provider winner per week (the parallel draw). May be
+    ///         address(0) when no provider was eligible that week.
+    mapping(uint256 => address) public providerWinners;
+    /// @notice Provider prize snapshot per week (= 20% of the pool when
+    ///         the provider draw fires, else 0).
+    mapping(uint256 => uint256) public providerWeeklyPrize;
+    /// @notice True once the provider winner has claimed.
+    mapping(uint256 => bool) public providerClaimed;
 
     event PoolRegistered(address indexed mintPolicy, string name, string symbol);
     event WeekEntered(uint256 indexed weekIndex, address indexed buyer);
+    event ProviderWeekEntered(uint256 indexed weekIndex, address indexed provider);
     event WinnerDrawn(uint256 indexed weekIndex, address indexed winner, uint256 prize);
+    event ProviderWinnerDrawn(uint256 indexed weekIndex, address indexed winner, uint256 prize);
     event Claimed(uint256 indexed weekIndex, address indexed winner, uint256 prize);
+    event ProviderClaimed(uint256 indexed weekIndex, address indexed winner, uint256 prize);
 
     error NotPaidYet();
+    error NotHuman();
     error WeekNotEnded();
     error AlreadyDrawn();
     error NoEntries();
     error NotWinner();
+    error NotProviderWinner();
     error AlreadyClaimed();
+    error AlreadyClaimedProvider();
     error EmptyPool();
 
     constructor(
@@ -124,35 +157,81 @@ contract RewardPool {
         }
     }
 
-    /// @notice Run the draw for a past week. Anyone may call. Picks an
-    ///         entry index via `block.prevrandao % entries.length`. The
-    ///         prize amount is snapshotted from the pool's current group
-    ///         token balance — later contributions stay for future weeks.
-    /// @param weekIndex Index of the week to draw. Must be a fully closed
-    ///        week (< `currentWeek()`).
+    /// @notice Provider self-registration *by the buyer in the pay
+    ///         bundle*. When a buyer pays a service via the pool route,
+    ///         the PaySheet calls this with the provider's address so
+    ///         the provider enters the parallel provider draw for the
+    ///         current week. The `Hub.isHuman` gate prevents random
+    ///         non-avatar addresses from being injected.
+    function enterProviderWeek(address provider) external {
+        if (!hub.isHuman(provider)) revert NotHuman();
+
+        uint256 w = currentWeek();
+        if (!providerInWeek[w][provider]) {
+            providerInWeek[w][provider] = true;
+            weeklyProviders[w].push(provider);
+            emit ProviderWeekEntered(w, provider);
+        }
+    }
+
+    /// @notice Run the weekly draws — one for buyers, one for providers.
+    ///         Anyone may call after the target week has fully closed.
+    ///         The pool's group-token balance at call time is split:
+    ///           - 80% → random eligible buyer (the original draw)
+    ///           - 20% → random eligible provider whose service got paid
+    ///         If there are no provider entries, the provider share
+    ///         folds into the buyer share for that week (100% to buyer)
+    ///         so the prize never gets stuck.
+    /// @param weekIndex Index of the week to draw. Must satisfy
+    ///        `weekIndex < currentWeek()`.
     function drawWeekly(uint256 weekIndex) external {
         if (weekIndex >= currentWeek()) revert WeekNotEnded();
         if (winners[weekIndex] != address(0)) revert AlreadyDrawn();
 
-        address[] storage weekEntries = weeklyEntries[weekIndex];
-        uint256 n = weekEntries.length;
-        if (n == 0) revert NoEntries();
+        address[] storage buyerEntries = weeklyEntries[weekIndex];
+        uint256 nBuyers = buyerEntries.length;
+        if (nBuyers == 0) revert NoEntries();
 
-        uint256 prize = hub.balanceOf(address(this), selfTokenId);
-        if (prize == 0) revert EmptyPool();
+        uint256 totalPrize = hub.balanceOf(address(this), selfTokenId);
+        if (totalPrize == 0) revert EmptyPool();
 
-        uint256 r = uint256(block.prevrandao) % n;
-        address winner = weekEntries[r];
+        address[] storage provEntries = weeklyProviders[weekIndex];
+        uint256 nProviders = provEntries.length;
 
-        winners[weekIndex] = winner;
-        weeklyPrize[weekIndex] = prize;
-        emit WinnerDrawn(weekIndex, winner, prize);
+        uint256 buyerPrize;
+        uint256 providerPrize;
+        if (nProviders == 0) {
+            // No provider draw this week — full pool to the buyer winner.
+            buyerPrize = totalPrize;
+            providerPrize = 0;
+        } else {
+            providerPrize = (totalPrize * PROVIDER_SHARE_BPS) / 10000;
+            buyerPrize = totalPrize - providerPrize;
+        }
+
+        // Buyer pick.
+        uint256 rBuyer = uint256(block.prevrandao) % nBuyers;
+        address buyerWinner = buyerEntries[rBuyer];
+        winners[weekIndex] = buyerWinner;
+        weeklyPrize[weekIndex] = buyerPrize;
+        emit WinnerDrawn(weekIndex, buyerWinner, buyerPrize);
+
+        // Provider pick — uses a derived randomness so the two draws are
+        // not correlated to the same prevrandao byte alignment.
+        if (nProviders > 0) {
+            uint256 rProv = uint256(keccak256(abi.encode(block.prevrandao, weekIndex, "provider"))) % nProviders;
+            address provWinner = provEntries[rProv];
+            providerWinners[weekIndex] = provWinner;
+            providerWeeklyPrize[weekIndex] = providerPrize;
+            emit ProviderWinnerDrawn(weekIndex, provWinner, providerPrize);
+        }
     }
 
-    /// @notice Winner claims the snapshotted prize. Transfers group tokens
-    ///         from the pool to the winner. Decoupled from `drawWeekly`
-    ///         so a winner who has not pre-trusted the group token can
-    ///         set up trust and then claim without blocking the draw.
+    /// @notice Buyer winner claims the snapshotted prize. Transfers group
+    ///         tokens from the pool to the winner. Decoupled from
+    ///         `drawWeekly` so a winner who has not pre-trusted the group
+    ///         token can set up trust and then claim without blocking
+    ///         the draw.
     function claim(uint256 weekIndex) external {
         address w = winners[weekIndex];
         if (msg.sender != w) revert NotWinner();
@@ -162,6 +241,19 @@ contract RewardPool {
         uint256 prize = weeklyPrize[weekIndex];
         hub.safeTransferFrom(address(this), msg.sender, selfTokenId, prize, "");
         emit Claimed(weekIndex, msg.sender, prize);
+    }
+
+    /// @notice Provider winner claims the parallel-draw prize. Same flow
+    ///         as `claim` but reads from the provider-side state.
+    function claimProvider(uint256 weekIndex) external {
+        address w = providerWinners[weekIndex];
+        if (msg.sender != w) revert NotProviderWinner();
+        if (providerClaimed[weekIndex]) revert AlreadyClaimedProvider();
+
+        providerClaimed[weekIndex] = true;
+        uint256 prize = providerWeeklyPrize[weekIndex];
+        hub.safeTransferFrom(address(this), msg.sender, selfTokenId, prize, "");
+        emit ProviderClaimed(weekIndex, msg.sender, prize);
     }
 
     /// @notice Required ERC-1155 receiver hooks so the Hub accepts the
@@ -201,6 +293,14 @@ contract RewardPool {
 
     function entries(uint256 weekIndex) external view returns (address[] memory) {
         return weeklyEntries[weekIndex];
+    }
+
+    function providerEntriesCount(uint256 weekIndex) external view returns (uint256) {
+        return weeklyProviders[weekIndex].length;
+    }
+
+    function providerEntries(uint256 weekIndex) external view returns (address[] memory) {
+        return weeklyProviders[weekIndex];
     }
 
     function poolBalance() external view returns (uint256) {

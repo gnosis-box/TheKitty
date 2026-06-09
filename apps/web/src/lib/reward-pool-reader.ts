@@ -17,6 +17,10 @@ const WINNER_DRAWN_EVENT = parseAbiItem(
   'event WinnerDrawn(uint256 indexed weekIndex, address indexed winner, uint256 prize)',
 );
 
+const PROVIDER_WINNER_DRAWN_EVENT = parseAbiItem(
+  'event ProviderWinnerDrawn(uint256 indexed weekIndex, address indexed winner, uint256 prize)',
+);
+
 const WEEK_ENTERED_EVENT = parseAbiItem(
   'event WeekEntered(uint256 indexed weekIndex, address indexed buyer)',
 );
@@ -84,11 +88,15 @@ export interface PoolState {
   balance: bigint;
   currentWeekIndex: bigint;
   currentWeekEntries: bigint;
+  currentWeekProviderEntries: bigint;
   previousWeekIndex: bigint;
   previousWeekEntries: bigint;
   previousWeekWinner: Address | null;
   previousWeekPrize: bigint;
   previousWeekClaimed: boolean;
+  previousWeekProviderWinner: Address | null;
+  previousWeekProviderPrize: bigint;
+  previousWeekProviderClaimed: boolean;
 }
 
 export async function readPoolState(): Promise<PoolState | null> {
@@ -108,11 +116,27 @@ export async function readPoolState(): Promise<PoolState | null> {
   })) as bigint;
   const prevWeek = currentWeek > 0n ? currentWeek - 1n : 0n;
 
-  const [currentEntries, prevEntries, prevWinner, prevPrize, prevClaimed] = await Promise.all([
+  const [
+    currentEntries,
+    currentProviderEntries,
+    prevEntries,
+    prevWinner,
+    prevPrize,
+    prevClaimed,
+    prevProviderWinner,
+    prevProviderPrize,
+    prevProviderClaimed,
+  ] = await Promise.all([
     client.readContract({
       address: pool,
       abi: rewardPoolAbi,
       functionName: 'entriesCount',
+      args: [currentWeek],
+    }) as Promise<bigint>,
+    client.readContract({
+      address: pool,
+      abi: rewardPoolAbi,
+      functionName: 'providerEntriesCount',
       args: [currentWeek],
     }) as Promise<bigint>,
     client.readContract({
@@ -139,22 +163,46 @@ export async function readPoolState(): Promise<PoolState | null> {
       functionName: 'claimed',
       args: [prevWeek],
     }) as Promise<boolean>,
+    client.readContract({
+      address: pool,
+      abi: rewardPoolAbi,
+      functionName: 'providerWinners',
+      args: [prevWeek],
+    }) as Promise<Address>,
+    client.readContract({
+      address: pool,
+      abi: rewardPoolAbi,
+      functionName: 'providerWeeklyPrize',
+      args: [prevWeek],
+    }) as Promise<bigint>,
+    client.readContract({
+      address: pool,
+      abi: rewardPoolAbi,
+      functionName: 'providerClaimed',
+      args: [prevWeek],
+    }) as Promise<boolean>,
   ]);
 
+  const ZERO = '0x0000000000000000000000000000000000000000';
   return {
     poolAddress: pool,
     poolTokenId: BigInt(pool),
     balance,
     currentWeekIndex: currentWeek,
     currentWeekEntries: currentEntries,
+    currentWeekProviderEntries: currentProviderEntries,
     previousWeekIndex: prevWeek,
     previousWeekEntries: prevEntries,
     previousWeekWinner:
-      prevWinner && prevWinner !== '0x0000000000000000000000000000000000000000'
-        ? (prevWinner as Address)
-        : null,
+      prevWinner && prevWinner !== ZERO ? (prevWinner as Address) : null,
     previousWeekPrize: prevPrize,
     previousWeekClaimed: prevClaimed,
+    previousWeekProviderWinner:
+      prevProviderWinner && prevProviderWinner !== ZERO
+        ? (prevProviderWinner as Address)
+        : null,
+    previousWeekProviderPrize: prevProviderPrize,
+    previousWeekProviderClaimed: prevProviderClaimed,
   };
 }
 
@@ -201,6 +249,79 @@ export async function readViewerWins(viewer: Address): Promise<ViewerWin[]> {
     prize: log.args.prize as bigint,
     claimed: claims[i] ?? false,
   }));
+}
+
+/// Same as `readViewerWins` but for the provider-side draw. Used by the
+/// `/pool` route to render the parallel claim list for providers whose
+/// service got paid and who got selected in the provider draw.
+export async function readViewerProviderWins(viewer: Address): Promise<ViewerWin[]> {
+  const pool = CIRCLES_CONFIG.rewardPoolAddress;
+  if (!pool) return [];
+  const client = getPublicClient();
+
+  const logs = await client.getLogs({
+    address: pool,
+    event: PROVIDER_WINNER_DRAWN_EVENT,
+    args: { winner: viewer },
+    fromBlock: 'earliest',
+    toBlock: 'latest',
+  });
+
+  if (logs.length === 0) return [];
+
+  const claims = await Promise.all(
+    logs.map((log) =>
+      client.readContract({
+        address: pool,
+        abi: rewardPoolAbi,
+        functionName: 'providerClaimed',
+        args: [log.args.weekIndex as bigint],
+      }) as Promise<boolean>,
+    ),
+  );
+
+  return logs.map((log, i) => ({
+    weekIndex: log.args.weekIndex as bigint,
+    prize: log.args.prize as bigint,
+    claimed: claims[i] ?? false,
+  }));
+}
+
+/// Whether the viewer (a provider) has been entered in the current
+/// week's provider draw. True iff at least one buyer paid one of the
+/// viewer's services this week via the pool route.
+export async function readProviderInThisWeek(viewer: Address): Promise<boolean> {
+  const pool = CIRCLES_CONFIG.rewardPoolAddress;
+  if (!pool) return false;
+  const client = getPublicClient();
+  const week = (await client.readContract({
+    address: pool,
+    abi: rewardPoolAbi,
+    functionName: 'currentWeek',
+  })) as bigint;
+  return (await client.readContract({
+    address: pool,
+    abi: rewardPoolAbi,
+    functionName: 'providerInWeek',
+    args: [week, viewer],
+  })) as boolean;
+}
+
+/// Read the list of provider entries for a given week. Used by `/pool`
+/// to render the provider avatar stack next to the buyer one.
+export async function readWeekProviderEntries(
+  weekIndex: bigint,
+): Promise<Address[]> {
+  const pool = CIRCLES_CONFIG.rewardPoolAddress;
+  if (!pool) return [];
+  const client = getPublicClient();
+  const list = (await client.readContract({
+    address: pool,
+    abi: rewardPoolAbi,
+    functionName: 'providerEntries',
+    args: [weekIndex],
+  })) as readonly Address[];
+  return [...list];
 }
 
 /// Read the eligible buyers for a given week (the address[] underlying
