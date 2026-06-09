@@ -359,9 +359,16 @@ function ProposalsPane({
     return (
       <Card>
         <CardContent>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--color-muted)]">
-              No active proposals. Open a vote for anything above the small-spend cap.
+              No active proposals.{' '}
+              <Link
+                to={`/kitty/${governance}/propose`}
+                className="text-[color-mix(in_oklab,var(--color-accent),black_10%)] hover:underline"
+              >
+                Birthday gift, group outing, or solidarity
+              </Link>{' '}
+              — one tap to start.
             </p>
             <Link
               to={`/kitty/${governance}/propose`}
