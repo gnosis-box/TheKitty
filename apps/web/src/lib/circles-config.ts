@@ -72,7 +72,7 @@ const GNOSIS: CirclesConfig = {
     '0x7D2a0C97324876F327281BBffFfE076Eaf3af84a',
   rewardPoolAddress:
     (import.meta.env.VITE_REWARD_POOL as `0x${string}` | undefined) ??
-    '0x57CA75a98aC06De9708e29f239600eEC47Ca9888',
+    '0x4741561247a8f87daA1E8354a17B350c8053b584',
 };
 
 export const CIRCLES_CONFIG: CirclesConfig = GNOSIS;
