@@ -67,24 +67,35 @@ export default function ServicesRoute() {
       setDiscovered([]);
       return;
     }
-    try {
-      const [list, statsAgg, recentList, discoveredList] = await Promise.all([
-        readAllActiveServices(address ?? undefined),
-        readServiceStats(),
-        readNetworkRecentPayments(5),
-        address
-          ? readProvidersDiscoveredViaTrustGraph(address, 3)
-          : Promise.resolve([] as DiscoveredProvider[]),
-      ]);
-      setServices(list);
-      setStats(statsAgg);
-      setRecent(recentList);
-      setDiscovered(discoveredList);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load services');
-      setServices([]);
-      setStats(null);
-      setRecent([]);
+    // Each read fires independently and updates its own slice of state.
+    // A slow/hanging read (e.g. the trust-graph discovery scan over Hub
+    // V2 Trust logs) MUST NOT block the rest of the page — `Promise.all`
+    // and even `allSettled` would still wait for a never-resolving fetch
+    // and keep the skeletons up forever.
+    void readAllActiveServices(address ?? undefined).then(
+      (list) => {
+        setServices(list);
+        setError(null);
+      },
+      (err) => {
+        setServices([]);
+        setError(err instanceof Error ? err.message : 'Failed to load services');
+      },
+    );
+    void readServiceStats().then(
+      (statsAgg) => setStats(statsAgg),
+      () => setStats(null),
+    );
+    void readNetworkRecentPayments(5).then(
+      (recentList) => setRecent(recentList),
+      () => setRecent([]),
+    );
+    if (address) {
+      void readProvidersDiscoveredViaTrustGraph(address, 3).then(
+        (discoveredList) => setDiscovered(discoveredList),
+        () => setDiscovered([]),
+      );
+    } else {
       setDiscovered([]);
     }
   }, [address, registryReady]);
