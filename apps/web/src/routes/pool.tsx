@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { BurgerButton } from '@/components/BurgerButton';
+import { MainTabs } from '@/components/MainTabs';
 import { MemberAvatar } from '@/components/pot/MemberAvatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWallet } from '@/hooks/use-wallet';
@@ -58,6 +59,8 @@ export default function PoolRoute() {
           </p>
         </div>
       </header>
+
+      <MainTabs />
 
       <PrizeHeadline />
       <ViewerStatusCard />

@@ -1,19 +1,23 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Store, Wallet } from 'lucide-react';
+import { Crown, Store, Wallet } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-/// Top-level segmented control between the two main surfaces of the app:
-/// the **Services** directory (default — what users came to buy or sell)
-/// and **Funding** (the kitties that bankroll the spending).
-/// Rendered at the top of `/services` and `/funding` so a tap on either
-/// label swaps routes without unmounting the header above it.
+/// Top-level segmented control between the three main surfaces of the
+/// app: **Services** (the directory), **Funding** (the kitties), and
+/// **Pool** (the weekly draw — promoted to a primary tab so users
+/// don't have to discover it from the burger menu).
+/// Rendered at the top of `/services`, `/funding`, and `/pool` so a
+/// tap on any label swaps routes without unmounting the header above
+/// it.
 export function MainTabs() {
   const { pathname } = useLocation();
-  const active: 'services' | 'funding' = pathname.startsWith('/funding')
+  const active: 'services' | 'funding' | 'pool' = pathname.startsWith('/funding')
     ? 'funding'
-    : 'services';
+    : pathname.startsWith('/pool')
+      ? 'pool'
+      : 'services';
 
   return (
     <div
@@ -22,6 +26,7 @@ export function MainTabs() {
     >
       <TabLink to="/services" label="Services" icon={<Store className="size-4" />} active={active === 'services'} />
       <TabLink to="/funding" label="Funding" icon={<Wallet className="size-4" />} active={active === 'funding'} />
+      <TabLink to="/pool" label="Pool" icon={<Crown className="size-4" />} active={active === 'pool'} />
     </div>
   );
 }
